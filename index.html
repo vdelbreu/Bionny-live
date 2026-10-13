@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f3f5f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0f16" media="(prefers-color-scheme: dark)">
+<meta name="description" content="ViaWrist : sommeil, cœur et activité lus dans ton bracelet, avec un coach qui te dit quoi faire.">
+<title>ViaWrist</title>
+<link rel="icon" href="icones/icone.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icones/icone-180.png">
+<link rel="stylesheet" href="style.css">
+<script type="module" src="js/app.js"></script>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 21s-7.5-4.6-9.6-9.3C.9 8.3 3 4.5 6.7 4.5c2.1 0 3.6 1.1 4.3 2.4h2c.7-1.3 2.2-2.4 4.3-2.4 3.7 0 5.8 3.8 4.3 7.2C19.5 16.4 12 21 12 21z"/></svg>
+      <h1>ViaWrist</h1>
+    </div>
+    <div class="status">
+      <span class="chip" id="chipConn"><i></i><span id="connText">Déconnecté</span></span>
+      <span class="chip" id="chipBatt" hidden><b class="num" id="battText">–</b></span>
+      <span class="chip warn" id="chipContact" hidden>Bracelet mal porté</span>
+      <span class="chip warn" id="chipPerdu" hidden>Signal perdu</span>
+    </div>
+  </header>
+
+  <div class="bandeau" id="bandeauExemple" hidden>
+    <span><b>Données d'exemple</b>, ce ne sont pas les tiennes.</span>
+    <button id="btnEffacerExemple" class="petit">Effacer l'exemple</button>
+  </div>
+
+  <main>
+    <!-- ===== Aujourd'hui : le direct, puis l'état du jour ===== -->
+    <section class="vue" id="vue-jour" data-vue="jour" hidden>
+      <div id="jourEntete"></div>
+
+      <article class="panel direct" id="carteDirect" data-etat="deconnecte">
+        <div class="direct-ligne">
+          <svg class="heart" id="coeur" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 21s-7.5-4.6-9.6-9.3C.9 8.3 3 4.5 6.7 4.5c2.1 0 3.6 1.1 4.3 2.4h2c.7-1.3 2.2-2.4 4.3-2.4 3.7 0 5.8 3.8 4.3 7.2C19.5 16.4 12 21 12 21z"/></svg>
+          <div class="direct-valeur">
+            <div class="bpm vide" id="bpm" aria-live="polite">--<small>bpm</small></div>
+            <div class="direct-sous"><span id="zoneName">Bracelet non connecté</span> <b id="zonePct"></b></div>
+          </div>
+          <div class="direct-actions">
+            <button class="primary" id="btnConnect">Connecter</button>
+          </div>
+        </div>
+        <p class="note" id="dernierPouls" hidden></p>
+        <canvas id="chart" aria-label="Pouls des deux dernières minutes"></canvas>
+      </article>
+
+      <article class="panel aide" id="aideConnexion" hidden>
+        <h3>Le bracelet n'apparaît pas ?</h3>
+        <ol class="etapes">
+          <li>Ferme l'app Bionny (balaie-la vers le haut) : le bracelet n'accepte qu'une connexion.</li>
+          <li>iPhone : Réglages → Bluetooth → (i) à côté de « Bionny 4.0 » → désactive « Partager les notifications système ».</li>
+          <li>Coupe puis rallume le Bluetooth, puis réessaie.</li>
+        </ol>
+        <p class="note">Toujours rien : « Oublier cet appareil » au même endroit libère le bracelet. Tu devras le réassocier si tu rouvres l'app Bionny.</p>
+        <div class="actions">
+          <button class="primary" data-action="connecter">Réessayer</button>
+          <button class="lien" id="btnTous">Afficher tous les appareils</button>
+        </div>
+      </article>
+
+      <div class="vue" id="jourContenu"></div>
+    </section>
+
+    <!-- ===== Coach ===== -->
+    <section class="vue" id="vue-coach" data-vue="coach" hidden>
+      <div class="entete"><div><h2 class="titre-vue">Coach</h2><p class="note">Il lit tes données sur ce téléphone, rien d'autre. Ce n'est pas un médecin.</p></div></div>
+      <div id="coachSemaine"></div>
+      <article class="panel chat-panel">
+        <div class="chat" id="chat" aria-live="polite"></div>
+        <div class="chips" id="chips"></div>
+        <form class="saisie" id="saisieCoach">
+          <input id="question" type="text" placeholder="Pose ta question…" autocomplete="off" maxlength="200" aria-label="Ta question">
+          <button class="primary" type="submit">Envoyer</button>
+        </form>
+      </article>
+      <article class="panel" id="outilCoh">
+        <div class="carte-tete"><h3>Respirer 5 min</h3><span class="note">cohérence cardiaque</span></div>
+        <div class="breathe">
+          <div class="orb"><i id="orb"></i><span id="orbText">Prêt</span></div>
+          <div class="breathe-txt">
+            <div class="big" id="rsa">–<small>bpm d'écart</small></div>
+            <p class="note">Inspire quand le cercle grossit, expire quand il rétrécit. Ça calme en quelques minutes, avant de dormir ou un moment stressant.</p>
+          </div>
+        </div>
+        <div class="actions"><button id="btnCoh" aria-pressed="false">Démarrer</button></div>
+      </article>
+    </section>
+
+    <!-- ===== Données : sous-onglets, détail du jour, tendances ===== -->
+    <section class="vue" id="vue-donnees" data-vue="donnees" hidden></section>
+
+    <!-- ===== Réglages ===== -->
+    <section class="vue" id="vue-reglages" data-vue="reglages" hidden>
+      <div class="entete"><div><h2 class="titre-vue">Réglages</h2></div></div>
+
+      <article class="panel">
+        <h3>Toi</h3>
+        <div class="champs">
+          <label class="field"><span>Prénom</span><input id="prenom" type="text" autocomplete="given-name" class="large" maxlength="30"></label>
+          <label class="field"><span>Âge</span><input id="age" type="number" inputmode="numeric" min="10" max="99"></label>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h3>Objectifs</h3>
+        <div class="champs">
+          <label class="field"><span>Sommeil</span><input id="objectif" type="number" inputmode="decimal" min="5" max="11" step="0.5"><span class="note">heures par nuit</span></label>
+          <label class="field"><span>Heure de lever</span><input id="reveil" type="time"><span class="note" id="reveilNote"></span></label>
+          <label class="field"><span>Pas</span><input id="objectifPas" type="number" inputmode="numeric" min="1000" max="40000" step="500"><span class="note">par jour</span></label>
+        </div>
+        <p class="note">Ton heure de lever sert à calculer quand te coucher. L'alarme, elle, se règle dans l'app Horloge de l'iPhone : le bracelet ne permet pas de programmer un réveil depuis ViaWrist.</p>
+      </article>
+
+      <article class="panel">
+        <h3>Bracelet</h3>
+        <p class="note fort" id="etatBracelet"></p>
+        <div class="actions"><button class="primary" data-action="synchro">Synchroniser</button></div>
+        <details id="guide">
+          <summary>Installer sur l'iPhone</summary>
+          <ol class="etapes">
+            <li>Installe l'app gratuite <b>Bluefy</b> (App Store) : Safari ne gère pas le Bluetooth.</li>
+            <li>Ouvre cette adresse dans Bluefy et ajoute-la en favori.</li>
+            <li>Ferme l'app Bionny avant de synchroniser : le bracelet n'accepte qu'une connexion.</li>
+          </ol>
+          <div class="copie"><code id="urlApp"></code><button class="petit" data-copier="urlApp">Copier</button></div>
+        </details>
+      </article>
+
+      <article class="panel">
+        <h3>Tes données</h3>
+        <p class="note fort" id="etatDonnees"></p>
+        <div class="actions">
+          <button id="btnExport">Sauvegarder</button>
+          <label class="bouton" for="fichierRestaurer">Restaurer</label>
+          <input id="fichierRestaurer" type="file" accept="application/json,.json" hidden>
+        </div>
+        <p class="note">Tout reste sur ce téléphone. La sauvegarde sert à changer de téléphone ou de navigateur.</p>
+      </article>
+
+      <article class="panel">
+        <details>
+          <summary>Avancé</summary>
+          <div class="champs">
+            <label class="field"><span>FC max mesurée</span><input id="fcmaxMesuree" type="number" inputmode="numeric" min="120" max="230"><span class="note" id="fcmaxNote"></span></label>
+          </div>
+          <h4>Contrôles de fiabilité</h4>
+          <ul class="raisons" id="controles"></ul>
+          <details>
+            <summary>D'où viennent les chiffres</summary>
+            <dl class="methodes">
+              <dt>Sommeil</dt><dd>Durée et phases enregistrées par le bracelet. Les phases au poignet sont des estimations : fie-toi surtout à la durée et aux horaires.</dd>
+              <dt>Heure de coucher</dt><dd>Ton heure de lever − ton besoin − 15 min pour t'endormir. Besoin = objectif + un quart de la dette des 7 dernières nuits (1 h au plus). Si c'est loin de ton habitude, on avance de 30 min à la fois.</dd>
+              <dt>FC de repos</dt><dd>Moyenne des 10 % de relevés les plus bas pendant ton sommeil.</dd>
+              <dt>Récupération</dt><dd>Ta dernière nuit face à ton objectif, et ta FC de repos face à tes 14 nuits précédentes. Indicatif, pas un avis médical.</dd>
+              <dt>Effort</dt><dd>Minutes où ton cœur dépasse 64 % de ta FC max (modéré), 77 % comptant double (intense). L'OMS conseille 150 min par semaine.</dd>
+              <dt>Pas et distance</dt><dd>Comptés par le bracelet, heure par heure.</dd>
+              <dt>Oxygène</dt><dd>Mesuré chaque heure par le bracelet. Au poignet, moins précis qu'un oxymètre au doigt.</dd>
+              <dt>Variabilité, stress, calories</dt><dd>Fournis par le bracelet mais pas affichés : ils ne passent pas les contrôles ci-dessus, ou leur unité n'est pas connue.</dd>
+              <dt>FC max</dt><dd>Ta valeur mesurée si tu la connais, sinon 208 − 0,7 × âge (Tanaka).</dd>
+            </dl>
+          </details>
+          <div class="actions">
+            <button id="btnDemo">Essayer le direct en démo</button>
+            <button id="btnExemple">Charger un exemple</button>
+            <button id="btnJournal">Journal Bluetooth</button>
+            <button id="btnEffacer" class="danger">Effacer mes données</button>
+          </div>
+        </details>
+      </article>
+    </section>
+  </main>
+</div>
+
+<nav class="onglets" aria-label="Sections">
+  <button data-vue="jour"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h4l2-5 4 10 2-5h8"/></svg>Aujourd'hui</button>
+  <button data-vue="coach"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg>Coach</button>
+  <button data-vue="donnees"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V12M10 20V6M15 20v-9M20 20V9"/></svg>Données</button>
+  <button data-vue="reglages"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Réglages</button>
+</nav>
+<div class="tip" id="tip" role="tooltip" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

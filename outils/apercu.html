@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Aperçu ViaWrist</title>
+<!-- Outil de dev : écrit les données d'exemple (format du bracelet) dans le stockage puis ouvre l'app.
+     outils/apercu.html#bilan ou #donnees/coeur pour viser un onglet.
+     Refuse de tourner si de vraies données sont déjà enregistrées dans ce navigateur. -->
+<p id="msg"></p>
+<script type="module">
+  import { impExemple } from '../js/exemple.js';
+  import { fusionner, vide } from '../js/sante.js';
+  let reelles = false;
+  try { const d = JSON.parse(localStorage.getItem('bionny-sante') || 'null'); reelles = !!(d && d.maj && !d.exemple); } catch { /* stockage illisible */ }
+  if (reelles) {
+    document.getElementById('msg').textContent = "Des données réelles sont enregistrées ici : l'aperçu ne les écrase pas.";
+  } else {
+    const onglet = location.hash.slice(1), t = Date.now();
+    const d = fusionner(vide(), impExemple(t), t);
+    d.exemple = true;
+    localStorage.setItem('bionny-sante', JSON.stringify(d));
+    location.replace('../index.html#' + (onglet || 'jour'));
+  }
+</script>

@@ -1,0 +1,10 @@
+{
+  "name": "viawrist",
+  "private": true,
+  "type": "module",
+  "description": "ViaWrist : sommeil, cœur, activité et récupération lus dans le bracelet Bionny 4.0 (iPhone, gratuit).",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "serve": "npx --yes serve ."
+  }
+}

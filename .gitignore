@@ -1,0 +1,11 @@
+# Notes personnelles : jamais dans le dépôt public
+Code.txt
+*.local.*
+.env*
+
+# Outils et systèmes
+node_modules/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
