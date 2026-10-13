@@ -5,7 +5,7 @@ import { initInfobulles, hm } from './graphes.js';
 import { fcMaxTanaka } from './coeur.js';
 import { journees, fiabilite } from './stats.js';
 import { seanceDeclaree, planSommeil, heure, matinSuivant, JOURS } from './coach.js';
-import { initLive, majAge, synchroniserBracelet, connecterBracelet, enDirect, lancerDemo } from './live.js';
+import { initLive, majAge, synchroniserBracelet, connecterBracelet, chercherBracelet, enDirect, lancerDemo } from './live.js';
 import { journal } from './connexion.js';
 import { $, nf, toast } from './ui.js';
 import { rendreJour } from './vues/jour.js';
@@ -295,6 +295,7 @@ function demarrer() {
     if (action === 'exemple') chargerExemple();
     if (action === 'synchro') synchroniser();
     if (action === 'connecter') connecterBracelet();
+    if (action === 'chercher') chercherBracelet();
     if (action === 'sport') {
       const f = $('#formSport'), b = e.target.closest('[data-action]');
       f.hidden = !f.hidden;

@@ -26,10 +26,13 @@ const octets = dv => new Uint8Array(dv.buffer.slice(dv.byteOffset, dv.byteOffset
 
 // Journal des derniers échanges (octets bruts), téléchargeable depuis Réglages pour le diagnostic
 const JOURNAL = [];
-function noter(sens, canal, p) {
-  JOURNAL.push({ t: Date.now(), sens, canal, hex: [...p].map(b => b.toString(16).padStart(2, '0')).join(' ') });
+function inscrire(sens, canal, texte) {
+  JOURNAL.push({ t: Date.now(), sens, canal, hex: texte });
   if (JOURNAL.length > 800) JOURNAL.shift();
 }
+const noter = (sens, canal, p) => inscrire(sens, canal, [...p].map(b => b.toString(16).padStart(2, '0')).join(' '));
+// étapes de connexion (recherche, reconnexion directe, libération) : savoir ce que fait le navigateur, sur iPhone surtout
+export const info = texte => inscrire('·', 'info', texte);
 export const journal = () => JOURNAL.map(x => `${new Date(x.t).toLocaleTimeString('fr-FR')}.${String(x.t % 1000).padStart(3, '0')} ${x.sens} ${x.canal} ${x.hex}`).join('\n');
 
 function diffuser(p, canal) { noter('←', canal, p); for (const f of E.abonnes) f(p, canal); }

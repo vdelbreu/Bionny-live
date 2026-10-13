@@ -11,7 +11,7 @@ const ATTENTE_DIRECT_MS = 45000;   // sans valeur en direct après 45 s : on le 
 
 const S = {
   source: null, t0: performance.now(), mesures: [], bpm: null, derniere: 0,
-  coh: { on: false, debut: 0, cycles: {} }, demo: null, appareil: null, wake: null, attente: 0, dernierDessin: 0,
+  coh: { on: false, debut: 0, cycles: {} }, demo: null, appareil: null, wake: null, attente: 0, dernierDessin: 0, libere: false,
 };
 const maintenant = () => (performance.now() - S.t0) / 1000;
 const zone = bpm => zoneDe(bpm, O.fcMax());
@@ -105,33 +105,66 @@ const rappels = {
 };
 
 // tous = sans filtre, si le bracelet s'annonce sous un autre nom. Renvoie true une fois connecté.
-async function connecter(tous = false) {
+// Une recherche ne voit pas un bracelet que l'iPhone tient déjà (app Bionny, session précédente) : il fallait l'éteindre
+// et le rallumer. On se reconnecte donc d'abord, sans recherche, au bracelet déjà autorisé : celui de la session en
+// cours, sinon celui que le navigateur a retenu (getDevices). La recherche ne sert qu'en dernier recours.
+async function appareilConnu() {
+  if (S.appareil) return S.appareil;
+  if (!navigator.bluetooth?.getDevices) { B.info('getDevices non disponible dans ce navigateur'); return null; }
+  try {
+    const liste = await navigator.bluetooth.getDevices();
+    B.info(`getDevices : ${liste.length} appareil(s)${liste.length ? ' : ' + liste.map(d => d.name || 'sans nom').join(', ') : ''}`);
+    return liste.find(d => /bionny/i.test(d.name || '')) ?? (liste.length === 1 ? liste[0] : null);
+  } catch (e) { B.info(`getDevices refusé : ${e.message}`); return null; }
+}
+
+async function brancherAppareil(appareil, { delai = 0, discret = false } = {}) {
+  arreterDemo(); remiseAZero();
+  S.appareil = appareil; S.source = 'ble'; S.libere = false;
+  appareil.addEventListener('gattserverdisconnected', deconnexion);
+  carte('connexion', 'Connexion au bracelet…'); puce('Connexion…', '');
+  try {
+    await brancher(true, delai);
+    B.info(`connecté à ${appareil.name || 'appareil sans nom'}`);
+    $('#aideConnexion').hidden = true;
+    return true;
+  } catch (e) {
+    B.info(`connexion impossible : ${e.message}`);
+    S.source = null; B.fermer();
+    carte('deconnecte', 'Bracelet non connecté'); puce('Déconnecté', '');
+    if (!discret) {
+      $('#aideConnexion').hidden = false;
+      O.toast(e.name === 'NotFoundError' ? `« ${appareil.name || 'Cet appareil'} » n'est pas un bracelet compatible.` : `Connexion impossible (${e.message}). Ferme l'app Bionny puis réessaie.`);
+    }
+    return false;
+  }
+}
+
+async function connecter(tous = false, chercher = false) {
   if (!navigator.bluetooth) { O.aller('reglages'); const g = $('#guide'); if (g) { g.open = true; g.scrollIntoView({ behavior: 'smooth' }); } return false; }
   if (B.connecte()) return true;
+  if (!tous && !chercher) {
+    const connu = await appareilConnu();
+    if (connu) {
+      B.info(`connexion directe à ${connu.name || 'appareil sans nom'}`);
+      if (await brancherAppareil(connu, { delai: 12000, discret: true })) return true;
+      // hors de portée, ou tenu par un autre téléphone ou ordinateur : la recherche reste possible depuis l'aide
+      $('#aideConnexion').hidden = false;
+      O.toast("Bracelet injoignable : ferme l'app Bionny, puis « Chercher le bracelet ».");
+      return false;
+    }
+  }
   let appareil;
+  B.info(tous ? 'recherche de tous les appareils' : 'recherche du bracelet');
   try {
     appareil = await B.choisir(tous);
   } catch (e) {
+    B.info(`recherche : ${e.name}`);
     if (e.name === 'SecurityError' || e.name === 'NotAllowedError') { O.aller('reglages'); return false; }
     $('#aideConnexion').hidden = false;
     return false;
   }
-  arreterDemo(); remiseAZero();
-  S.appareil = appareil; S.source = 'ble';
-  appareil.addEventListener('gattserverdisconnected', deconnexion);
-  const nom = appareil.name || 'appareil sans nom';
-  carte('connexion', 'Connexion…'); puce('Connexion…', '');
-  try {
-    await brancher(true);
-    $('#aideConnexion').hidden = true;
-    return true;
-  } catch (e) {
-    S.source = null; B.fermer();
-    carte('deconnecte', 'Bracelet non connecté'); puce('Déconnecté', '');
-    $('#aideConnexion').hidden = false;
-    O.toast(e.name === 'NotFoundError' ? `« ${nom} » n'est pas un bracelet compatible.` : `Connexion impossible (${e.message}). Ferme l'app Bionny puis réessaie.`);
-    return false;
-  }
+  return brancherAppareil(appareil);
 }
 const avecDelai = (p, ms) => Promise.race([p, new Promise((_, non) => setTimeout(() => non(new Error('délai dépassé')), ms))]);
 async function brancher(avecHistorique, delai = 0) {
@@ -188,29 +221,28 @@ export async function synchroniserBracelet() {
   return synchroniserHistorique();
 }
 export const connecterBracelet = () => connecter(false);
+export const chercherBracelet = () => connecter(false, true);
 
-// Bluefy et Chrome retiennent le bracelet déjà choisi : à l'ouverture de l'app (et au retour dessus), on s'y
-// reconnecte sans rien demander, puis on synchronise si la dernière synchro date de plus de 30 min.
+// À l'ouverture de l'app et au retour dessus : reconnexion directe au bracelet déjà autorisé, sans rien demander,
+// puis synchro si la dernière date de plus de 30 min. En cas d'échec, on reste discret : le bouton Connecter reste là.
 let derniereTentative = 0;
-async function reconnexionAuto() {
-  if (!navigator.bluetooth?.getDevices || S.source || Date.now() - derniereTentative < 60000) return;
+async function reconnexionAuto(immediat = false) {
+  if (!navigator.bluetooth || S.source || (!immediat && Date.now() - derniereTentative < 60000)) return;
   derniereTentative = Date.now();
-  let appareils = [];
-  try { appareils = await navigator.bluetooth.getDevices(); } catch { return; }
-  const a = appareils.find(d => /bionny/i.test(d.name || '')) ?? (appareils.length === 1 ? appareils[0] : null);
+  const a = await appareilConnu();
   if (!a || S.source) return;
-  S.appareil = a; S.source = 'ble';
-  a.addEventListener('gattserverdisconnected', deconnexion);
-  carte('connexion', 'Connexion au bracelet…'); puce('Connexion…', '');
-  try {
-    await brancher(true, 15000);
-    $('#aideConnexion').hidden = true;
-  } catch {
-    // bracelet hors de portée ou tenu par une autre app : on reste discret, le bouton Connecter reste là
-    S.source = null;
-    try { a.gatt.disconnect(); } catch { /* déjà déconnecté */ }
-    carte('deconnecte', 'Bracelet non connecté'); puce('Déconnecté', '');
-  }
+  B.info(`reconnexion automatique à ${a.name || 'appareil sans nom'}`);
+  await brancherAppareil(a, { delai: 15000, discret: true });
+}
+
+// Quitter ViaWrist (autre app, écran verrouillé, page fermée) libère le bracelet : l'app Bionny, ou une recherche,
+// le retrouvent sans l'éteindre. Au retour, reconnexion directe. Pas pendant une synchro, pour ne pas la couper.
+function liberer(raison) {
+  if (S.source !== 'ble' || synchroEnCours) return;
+  B.info(`bracelet libéré (${raison})`);
+  S.source = null; S.libere = true;
+  B.fermer();
+  carte('deconnecte', 'Bracelet non connecté'); puce('Déconnecté', '');
 }
 
 /* ---------- Démo : données simulées, toujours affichées comme telles ---------- */
@@ -325,11 +357,12 @@ export function initLive(opts) {
   else carte('deconnecte', 'Bracelet non connecté');
   $('#btnConnect').onclick = () => (S.source === 'ble' ? deconnecter() : S.source === 'demo' ? arreterDemo() : connecter(false));
   $('#btnTous').onclick = () => connecter(true);
+  addEventListener('pagehide', () => liberer('page fermée'));
   $('#btnCoh').onclick = basculerCoh;
   document.addEventListener('visibilitychange', async () => {
-    if (document.visibilityState !== 'visible') return;
+    if (document.visibilityState !== 'visible') return liberer('app quittée');
     if (S.source === 'ble') try { S.wake = await navigator.wakeLock?.request('screen'); } catch { /* pas de wake lock */ }
-    else reconnexionAuto();
+    else reconnexionAuto(S.libere);
   });
   reconnexionAuto();
 

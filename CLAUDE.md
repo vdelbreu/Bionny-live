@@ -54,6 +54,7 @@ Commandes (lecture seule plus mesure en direct ; jamais d'écriture de l'heure n
 - `js/app.js` : stockage (`nettoyer`), réglages (dont `reveil`), navigation, imports, sport déclaré, sauvegarde
 - `js/coach.js` (pur), `js/vues/coach.js` (conversation), `js/vues/jour.js`, `js/vues/donnees.js`, `js/ui.js`
 - `js/live.js` : direct, synchro, démo, cohérence ; `js/connexion.js` (Web Bluetooth, journal) ; `js/bracelet.js` (protocole, pur)
+- Connexion : une recherche (`requestDevice`) ne voit pas un bracelet que l'iPhone tient déjà (il n'émet plus), d'où l'ancien « éteindre et rallumer ». « Connecter » et la reconnexion automatique passent donc d'abord par le bracelet déjà autorisé (objet de la session, sinon `getDevices`), la recherche n'est qu'en dernier recours (« Chercher le bracelet » dans l'aide). Quitter l'app (`visibilitychange` caché, `pagehide`) libère le bracelet, sauf pendant une synchro ; au retour, reconnexion directe. Chaque étape est notée dans le journal (`info`). Support de `getDevices` par Bluefy non confirmé.
 - `js/graphes.js`, `js/exemple.js`, `sw.js`
 
 Stockage : `localStorage` `bionny-reglages` et `bionny-sante` (noms gardés pour ne pas perdre les données), toujours en `try/catch`. Bluefy, Safari et Chrome ont chacun leur stockage : sauvegarde/restauration JSON pour passer de l'un à l'autre.
