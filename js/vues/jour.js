@@ -169,7 +169,7 @@ const FICHES = {
     const { v, r } = coeurNuit(c);
     return { titre: v != null ? `Cœur au repos : ${v} bpm` : 'Cœur au repos', corps: `<p class="fiche-cle">${esc(phraseCoeur(v, r))}</p>
       ${r && v != null ? `<p class="explication">Ta normale : ${Math.round(r.bas)} à ${Math.round(r.haut)} bpm. Mesuré la nuit, quand ton corps est au calme : c'est le meilleur signe de ta fatigue.</p>` : ''}
-      ${voirDetail('coeur')}` };
+      <div class="actions"><button class="petit" data-action="sante">Envoyer mon pouls vers Santé</button>${voirDetail('coeur')}</div>` };
   },
 
   oxygene(c) {

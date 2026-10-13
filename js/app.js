@@ -16,7 +16,8 @@ const VUES = ['jour', 'coach', 'donnees', 'reglages'];
 const ANCIENNES = { direct: 'jour', semaine: 'donnees', bilan: 'coach' };
 // objectif en minutes ; leverJours = heure de lever « HH:MM » par jour de la semaine (0 = dimanche), selon tes cours ;
 // reveil = ancienne heure unique, gardée seulement le temps de la reporter sur un jour
-const R = { prenom: '', age: 25, fcmaxMesuree: null, objectif: 480, objectifPas: 8000, reveil: null, leverJours: {}, raccourci: 'ViaWrist' };
+// santeJusqua = date de la dernière mesure de pouls envoyée vers Apple Santé
+const R = { prenom: '', age: 25, fcmaxMesuree: null, objectif: 480, objectifPas: 8000, reveil: null, leverJours: {}, santeJusqua: null, raccourci: 'ViaWrist' };
 let D = vide(), cache = null, vue = 'jour', pasDirect = null;
 
 /* ---------- Stockage local ---------- */
@@ -55,6 +56,7 @@ function reglagesValides(r) {
     leverJours: r.leverJours && typeof r.leverJours === 'object'
       ? Object.fromEntries(Object.entries(r.leverJours).filter(([j, h]) => /^[0-6]$/.test(j) && typeof h === 'string' && HEURE.test(h))) : null,
     raccourci: typeof r.raccourci === 'string' && r.raccourci.trim() ? r.raccourci.slice(0, 40) : null,
+    santeJusqua: n(r.santeJusqua, 0, 1e13),
   }).filter(([, v]) => v != null));
 }
 
@@ -188,6 +190,37 @@ async function partagerFichier(nom, contenu, type) {
   try { await navigator.share({ files: [f] }); } catch (e) { if (e.name !== 'AbortError') return false; }
   return true;
 }
+// Apple Santé : un site ne peut pas écrire dans Santé, le raccourci « ViaWrist Santé » le fait. On copie les mesures
+// de pouls pas encore envoyées (24 h au plus), une ligne « jj/mm/aaaa hh:mm;bpm » chacune, puis on lance le raccourci :
+// il lit le presse-papiers et enregistre chaque ligne dans Santé. Ensuite, Santé et un widget Raccourcis l'affichent.
+const RACCOURCI_SANTE = 'ViaWrist Santé';
+const dateSante = t => { const d = new Date(t), z = n => String(n).padStart(2, '0'); return `${z(d.getDate())}/${z(d.getMonth() + 1)}/${d.getFullYear()} ${z(d.getHours())}:${z(d.getMinutes())}`; };
+// une mesure par quart d'heure, plus toujours la dernière : Raccourcis enregistre les lignes une à une, 300 lignes
+// prendraient plusieurs minutes
+function lignesSante(fc, depuis) {
+  const recentes = fc.filter(x => x.t > depuis), garde = [];
+  let creneau = null;
+  for (const x of recentes) {
+    const c = Math.floor(x.t / (15 * 60e3));
+    if (c !== creneau) { garde.push(x); creneau = c; }
+  }
+  if (recentes.length && garde.at(-1) !== recentes.at(-1)) garde.push(recentes.at(-1));
+  return garde.map(x => `${dateSante(x.t)};${x.v}`);
+}
+async function envoyerSante() {
+  if (D.exemple) return toast("Données d'exemple : rien à envoyer.");
+  const depuis = Math.max(R.santeJusqua ?? 0, Date.now() - JOUR);
+  const lignes = lignesSante(D.fc, depuis);
+  if (!lignes.length) return toast(D.fc.length ? 'Rien de nouveau : synchronise le bracelet avant.' : 'Pas encore de pouls : connecte le bracelet.');
+  if (!(await copierTexte(lignes.join('\n')))) return toast('Copie impossible dans ce navigateur.');
+  R.santeJusqua = D.fc.at(-1).t;
+  sauverReglages();
+  rendreReglages();
+  toast(`${lignes.length} mesure${lignes.length > 1 ? 's' : ''} copiée${lignes.length > 1 ? 's' : ''}. Lance « ${RACCOURCI_SANTE} » si Raccourcis ne s'ouvre pas.`);
+  // ouvre l'app Raccourcis sur le bon raccourci ; sans effet si le navigateur refuse
+  location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent(RACCOURCI_SANTE);
+}
+
 async function exporterJournal() {
   const txt = journal();
   if (!txt) return toast("Journal vide : connecte d'abord le bracelet.");
@@ -231,6 +264,7 @@ function rendreReglages() {
   $('#fcmaxMesuree').placeholder = String(fcMaxTanaka(R.age));
   $('#fcmaxNote').textContent = R.fcmaxMesuree ? 'ta valeur mesurée' : `vide : estimée à ${fcMaxTanaka(R.age)} bpm`;
   $('#urlApp').textContent = location.origin + location.pathname;
+  $('#etatSante').textContent = R.santeJusqua ? `Pouls envoyé jusqu'au ${dateSante(R.santeJusqua).replace(' ', ' à ')}.` : 'Jamais envoyé.';
   const date = t => `le ${new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} à ${hm(t)}`;
   $('#etatBracelet').textContent = (enDirect() ? 'Connecté. ' : 'Pas connecté. ')
     + (D.majBracelet && !D.exemple ? `Dernière synchro ${date(D.majBracelet)}.` : 'Jamais synchronisé ici.');
@@ -297,6 +331,7 @@ function demarrer() {
     if (action === 'synchro') synchroniser();
     if (action === 'connecter') connecterBracelet();
     if (action === 'chercher') chercherBracelet();
+    if (action === 'sante') envoyerSante();
     if (action === 'sport') {
       const f = $('#formSport'), b = e.target.closest('[data-action]');
       f.hidden = !f.hidden;

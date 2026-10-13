@@ -431,3 +431,4 @@ label.bouton{cursor:pointer}
 .bulle details summary{font-size:13px;color:var(--muted)}
 .bulle details p{margin:0}
 .bulle details p+p{margin-top:6px}
+.etapes ol{margin:6px 0 0;padding-left:18px;display:grid;gap:4px}

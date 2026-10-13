@@ -151,6 +151,29 @@
       </article>
 
       <article class="panel">
+        <h3>Apple Santé</h3>
+        <p class="note fort" id="etatSante"></p>
+        <div class="actions"><button class="primary" data-action="sante">Envoyer mon pouls vers Santé</button></div>
+        <details><summary>Créer les raccourcis (une seule fois)</summary>
+          <p class="explication"><b>« ViaWrist Santé »</b>, qui enregistre ton pouls dans Santé. Dans l'app Raccourcis, touche « + », nomme-le exactement ainsi, puis ajoute :</p>
+          <ol class="etapes">
+            <li>« Obtenir le presse-papiers ».</li>
+            <li>« Séparer le texte », séparateur « Nouvelles lignes ».</li>
+            <li>« Répéter avec chaque élément », et dedans :
+              <ol>
+                <li>« Séparer le texte » : « Élément répété », séparateur personnalisé « ; ».</li>
+                <li>« Obtenir l'élément de la liste » : « Premier élément », puis « Définir la variable » <b>Quand</b>.</li>
+                <li>« Obtenir l'élément de la liste » : « Dernier élément » de « Texte séparé », puis « Définir la variable » <b>Pouls</b>.</li>
+                <li>« Enregistrer un échantillon de santé » : Fréquence cardiaque, valeur <b>Pouls</b>, date <b>Quand</b>.</li>
+              </ol>
+            </li>
+          </ol>
+          <p class="explication"><b>« Mon pouls »</b>, pour le voir dans un widget : « Rechercher des échantillons de santé » (Fréquence cardiaque, tri par date de début, le plus récent d'abord, limite 1), puis « Afficher le résultat ». Ajoute ensuite le widget Raccourcis sur ton écran d'accueil.</p>
+          <p class="note">C'est le pouls de la dernière synchro, pas le direct : Raccourcis ne sait pas lire un bracelet Bluetooth.</p>
+        </details>
+      </article>
+
+      <article class="panel">
         <h3>Tes données</h3>
         <p class="note fort" id="etatDonnees"></p>
         <div class="actions">
