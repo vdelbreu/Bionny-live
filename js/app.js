@@ -8,7 +8,7 @@ import { seanceDeclaree, planSommeil, heure, matinSuivant, JOURS } from './coach
 import { initLive, majAge, synchroniserBracelet, connecterBracelet, chercherBracelet, enDirect, lancerDemo } from './live.js';
 import { journal } from './connexion.js';
 import { $, nf, toast } from './ui.js';
-import { rendreJour } from './vues/jour.js';
+import { rendreJour, brancherFiches } from './vues/jour.js';
 import { rendreCoach, brancherCoach } from './vues/coach.js';
 import { rendreDonnees, brancherDonnees, ouvrirDonnees } from './vues/donnees.js';
 
@@ -286,6 +286,7 @@ function demarrer() {
   });
   brancherDonnees(() => rendre('donnees'));
   brancherCoach(contexte);
+  brancherFiches();
 
   document.querySelectorAll('.onglets button').forEach(b => { b.onclick = () => montrerVue(b.dataset.vue); });
   document.addEventListener('click', e => {

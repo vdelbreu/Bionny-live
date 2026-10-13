@@ -80,7 +80,8 @@ function navJour(o, auj) {
 
 const panneau = (contenu, titre = '') => `<article class="panel">${titre ? `<h3>${titre}</h3>` : ''}${contenu}</article>`;
 const rien = txt => panneau(`<p class="note fort">${txt}</p>`);
-const aide = txt => `<p class="explication">${txt}</p>`;
+// explications repliées : les chiffres d'abord, le texte seulement si on le demande
+const aide = txt => `<details class="comprendre"><summary>Comprendre</summary><p class="explication">${txt}</p></details>`;
 const dansJour = (serie, cle, avant = 0) => { const d0 = debutJour(cle); return (serie || []).filter(x => x.t >= d0 - avant && x.t < d0 + JOUR); };
 
 /* ---------- Détail du jour, par mesure ---------- */

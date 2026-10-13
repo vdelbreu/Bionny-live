@@ -128,6 +128,22 @@ export function phraseCoeur(v, r) {
   return 'Normale pour toi. Basse et stable, c\'est le signe d\'un cœur en forme.';
 }
 
+// Version courte pour les tuiles, mêmes seuils que phraseCoeur et phraseSommeil
+export function etatCoeur(v, r) {
+  if (v == null) return { niveau: null, court: 'pas de mesure cette nuit' };
+  if (!r) return { niveau: null, court: 'ta normale dès 5 nuits' };
+  if (v >= r.moy + 5) return { niveau: 'bas', court: "plus haut que d'habitude" };
+  if (v > r.haut) return { niveau: 'moyen', court: 'un peu haut' };
+  if (v < r.bas) return { niveau: 'ok', court: 'plus bas, bon signe' };
+  return { niveau: 'ok', court: 'normal pour toi' };
+}
+export function etatSommeil(n, plan) {
+  if (!n) return { niveau: null, court: 'pas de nuit' };
+  const ecart = n.tst - (plan.besoin - plan.rattrapage);
+  return ecart >= -15 * MIN ? { niveau: 'ok', court: 'objectif atteint' }
+    : ecart >= -60 * MIN ? { niveau: 'moyen', court: 'un peu court' } : { niveau: 'bas', court: 'nuit courte' };
+}
+
 // comparée à ton objectif (le rattrapage de dette ne compte que pour l'heure de coucher)
 export function phraseSommeil(n, plan) {
   if (!n) return 'Pas de nuit enregistrée : garde le bracelet la nuit et synchronise le matin.';
@@ -192,10 +208,11 @@ const signeBpm = d => Math.abs(d) < 1 ? 'stable' : `${d > 0 ? '+' : ''}${Math.ro
 const REPONSES = {
   jour(c) {
     const cj = conseilJour(c), plan = planSommeil(c), n = derniereNuit(c);
+    const soir = plan.coucher == null ? '' : plan.tard ? ', **au lit maintenant**' : `, **au lit vers ${heure(plan.coucher)}** ce soir`;
     return [
-      n ? `Cette nuit : **${duree(n.tst)}** de sommeil, récupération **${NIVEAU[cj.rec?.niveau] ?? 'non calculée'}**.` : "Synchronise le bracelet pour que j'aie ta dernière nuit.",
-      `Aujourd'hui : **${cj.titre.toLowerCase()}**. ${cj.phrase}`,
-      plan.coucher != null ? `Ce soir : ${phraseCoucher(plan)}.` : '',
+      `**${cj.titre}** aujourd'hui${soir}.`,
+      n ? `Cette nuit : ${duree(n.tst)} de sommeil, récupération ${NIVEAU[cj.rec?.niveau] ?? 'non calculée'}.` : "Synchronise le bracelet pour que j'aie ta dernière nuit.",
+      cj.phrase,
     ];
   },
 
@@ -214,8 +231,8 @@ const REPONSES = {
     const n = derniereNuit(c), s = semaine(c), obj = c.R.objectif * MIN;
     if (!s.nuits) return ['Aucune nuit ces 7 derniers jours : garde le bracelet la nuit et synchronise le matin.'];
     return [
-      n ? `Cette nuit : **${duree(n.tst)}** (${heure(minutesDuJour(n.debut))} → ${heure(minutesDuJour(n.fin))})${n.aDesStades ? `, dont ${duree(n.stades.deep)} de sommeil profond, celui qui répare le corps` : ''}.` : '',
-      `Sur ${s.nuits} nuit${s.nuits > 1 ? 's' : ''} : **${duree(s.tst)}** en moyenne, endormi vers ${heure(s.coucher)}.`,
+      n ? `Cette nuit : **${duree(n.tst)}**, ${etatSommeil(n, planSommeil(c)).court}.` : `Sur ${s.nuits} nuits : **${duree(s.tst)}** en moyenne.`,
+      n ? `Sur ${s.nuits} nuit${s.nuits > 1 ? 's' : ''} : ${duree(s.tst)} en moyenne, endormi vers ${heure(s.coucher)}.` : '',
       s.tst < obj - 30 * MIN ? 'Tu dors moins que ton objectif : avance ton coucher de 30 min.'
         : s.regularite > 45 ? `Tes horaires bougent beaucoup (± ${Math.round(s.regularite)} min) : vise la même heure chaque soir.` : 'Bon rythme, continue comme ça.',
     ];
@@ -224,10 +241,10 @@ const REPONSES = {
   sport(c) {
     const cj = conseilJour(c), e = effortSemaine(c), s = semaine(c);
     return [
-      `**${cj.titre}**. ${cj.phrase}`,
-      `Cette semaine : **${e.total} min d'effort** sur les ${OBJECTIF_EFFORT} conseillées.`,
+      `**${cj.titre}** aujourd'hui. Cette semaine : **${e.total} / ${OBJECTIF_EFFORT} min** d'effort.`,
+      cj.phrase,
       e.total < 30 && s.pas.cette?.moy > 7000 ? 'Tu marches beaucoup, mais ton cœur monte rarement : 2 ou 3 séances de cardio feraient la différence.'
-        : e.total < OBJECTIF_EFFORT ? "Sport fait sans le bracelet ? Ajoute-le avec « J'ai fait du sport », sur Aujourd'hui." : '',
+        : e.total < OBJECTIF_EFFORT ? "Sport fait sans le bracelet ? Ajoute-le dans la tuile Effort, sur Aujourd'hui." : '',
     ];
   },
 
@@ -270,10 +287,10 @@ const REPONSES = {
   semaine(c) {
     const s = semaine(c), p = planSommeil(c);
     return [
-      s.nuits ? `Sommeil : **${duree(s.tst)}** par nuit, endormi vers ${heure(s.coucher)}${p.dette >= 30 * MIN ? `, ${duree(p.dette)} de retard` : ''}.` : 'Sommeil : pas de nuit cette semaine.',
-      `Activité : ${s.pas.cette ? `**${nf(s.pas.cette.moy)} pas** par jour, ` : ''}**${s.effort.total} min d'effort** sur ${OBJECTIF_EFFORT}${s.rhr.cette ? `. Cœur au repos : ${Math.round(s.rhr.cette.moy)} bpm${s.rhr.ecart != null ? `, ${signeBpm(s.rhr.ecart)}` : ''}` : ''}.`,
-      s.effort.total < OBJECTIF_EFFORT / 2 ? 'Ta priorité : 2 ou 3 séances où ton cœur monte vraiment.'
-        : s.tst != null && s.tst < c.R.objectif * MIN - 30 * MIN ? 'Ta priorité : dormir plus, en avançant ton coucher.' : 'Belle semaine, garde ce rythme.',
+      s.effort.total < OBJECTIF_EFFORT / 2 ? 'Ta priorité : **2 ou 3 séances** où ton cœur monte vraiment.'
+        : s.tst != null && s.tst < c.R.objectif * MIN - 30 * MIN ? 'Ta priorité : **dormir plus**, en avançant ton coucher.' : '**Belle semaine**, garde ce rythme.',
+      s.nuits ? `Sommeil : ${duree(s.tst)} par nuit, endormi vers ${heure(s.coucher)}${p.dette >= 30 * MIN ? `, ${duree(p.dette)} de retard` : ''}.` : 'Sommeil : pas de nuit cette semaine.',
+      `Activité : ${s.pas.cette ? `${nf(s.pas.cette.moy)} pas par jour, ` : ''}${s.effort.total} min d'effort sur ${OBJECTIF_EFFORT}${s.rhr.cette ? `. Cœur au repos : ${Math.round(s.rhr.cette.moy)} bpm${s.rhr.ecart != null ? `, ${signeBpm(s.rhr.ecart)}` : ''}` : ''}.`,
     ];
   },
 

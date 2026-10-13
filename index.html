@@ -56,17 +56,19 @@
       </article>
 
       <article class="panel aide" id="aideConnexion" hidden>
-        <h3>Le bracelet n'apparaît pas ?</h3>
-        <ol class="etapes">
-          <li>Ferme l'app Bionny (balaie-la vers le haut) : le bracelet n'accepte qu'une connexion.</li>
-          <li>iPhone : Réglages → Bluetooth → (i) à côté de « Bionny 4.0 » → désactive « Partager les notifications système ».</li>
-          <li>Coupe puis rallume le Bluetooth, puis réessaie.</li>
-        </ol>
-        <p class="note">Toujours rien : « Oublier cet appareil » au même endroit libère le bracelet. Tu devras le réassocier si tu rouvres l'app Bionny.</p>
+        <h3>Bracelet introuvable</h3>
+        <p class="explication">Ferme l'app Bionny, puis touche « Chercher ».</p>
         <div class="actions">
-          <button class="primary" data-action="chercher">Chercher le bracelet</button>
+          <button class="primary" data-action="chercher">Chercher</button>
           <button class="lien" id="btnTous">Afficher tous les appareils</button>
         </div>
+        <details><summary>Toujours rien ?</summary>
+          <ol class="etapes">
+            <li>Réglages de l'iPhone → Apps → Bionny → désactive Bluetooth.</li>
+            <li>Réglages → Bluetooth → (i) à côté de « Bionny 4.0 » → Oublier cet appareil.</li>
+            <li>Éteins puis rallume le bracelet, puis « Chercher ».</li>
+          </ol>
+        </details>
       </article>
 
       <div class="vue" id="jourContenu"></div>
@@ -74,7 +76,7 @@
 
     <!-- ===== Coach ===== -->
     <section class="vue" id="vue-coach" data-vue="coach" hidden>
-      <div class="entete"><div><h2 class="titre-vue">Coach</h2><p class="note">Il lit tes données sur ce téléphone, rien d'autre. Ce n'est pas un médecin.</p></div></div>
+      <div class="entete"><div><h2 class="titre-vue">Coach</h2><p class="note">D'après tes données, sur ce téléphone. Pas un avis médical.</p></div></div>
       <article class="panel chat-panel">
         <form class="saisie" id="saisieCoach">
           <input id="question" type="text" placeholder="Pose ta question…" autocomplete="off" enterkeyhint="send" maxlength="200" aria-label="Ta question">
@@ -192,6 +194,13 @@
     </section>
   </main>
 </div>
+
+<dialog class="fiche" id="fiche" aria-labelledby="ficheTitre">
+  <div class="fiche-boite">
+    <div class="fiche-tete"><h3 id="ficheTitre"></h3><button class="fermer" data-fermer aria-label="Fermer">✕</button></div>
+    <div class="fiche-corps" id="ficheCorps"></div>
+  </div>
+</dialog>
 
 <nav class="onglets" aria-label="Sections">
   <button data-vue="jour"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h4l2-5 4 10 2-5h8"/></svg>Aujourd'hui</button>

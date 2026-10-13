@@ -40,6 +40,9 @@ export function faceNormale(v, r, f = x => Math.round(x)) {
   return `${pos} (${f(r.moy)})`;
 }
 
+// Une heure ou une durée ne se coupe pas en fin de ligne (« 7 h » / « 10 ») : espaces insécables
+export const insecable = html => html.replace(/(\d) h (\d)/g, '$1\u00a0h\u00a0$2').replace(/(\d) (min|bpm|pas|%)(?![\w-])/g, '$1\u00a0$2');
+
 export function barreProgression(v, objectif) {
   const p = Math.max(0, Math.min(1, v / objectif));
   return `<span class="progression" role="progressbar" aria-valuemin="0" aria-valuemax="${objectif}" aria-valuenow="${Math.round(v)}"><i style="width:${(p * 100).toFixed(1)}%"></i></span>`;

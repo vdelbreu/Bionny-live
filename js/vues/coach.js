@@ -3,7 +3,7 @@
 import { duree } from '../sante.js';
 import { esc } from '../graphes.js';
 import { repondre, SUGGESTIONS, semaine, planSommeil, heure, OBJECTIF_EFFORT } from '../coach.js';
-import { $, aDesDonnees } from '../ui.js';
+import { $, aDesDonnees, insecable } from '../ui.js';
 
 const fil = [];
 let contexte = null;
@@ -22,12 +22,13 @@ export function rendreCoach(c) {
   dessiner();
 }
 
-// Le plus récent en haut, juste sous les questions : la réponse apparaît là où l'on regarde
+// Le plus récent en haut, juste sous les questions : la réponse apparaît là où l'on regarde.
+// Une phrase-choc d'abord, le reste replié sous « Détails ».
 function dessiner() {
-  $('#chat').innerHTML = fil.slice(-4).reverse().map((e, i) => `<div class="echange${i ? ' ancien' : ''}">
+  $('#chat').innerHTML = insecable(fil.slice(-4).reverse().map((e, i) => `<div class="echange${i ? ' ancien' : ''}">
     ${e.q ? `<div class="bulle moi"><p>${esc(e.q)}</p></div>` : ''}
-    <div class="bulle coach">${e.lignes.map(l => `<p>${md(l)}</p>`).join('')}</div>
-  </div>`).join('');
+    <div class="bulle coach"><p>${md(e.lignes[0])}</p>${e.lignes.length > 1 ? `<details><summary>Détails</summary>${e.lignes.slice(1).map(l => `<p>${md(l)}</p>`).join('')}</details>` : ''}</div>
+  </div>`).join(''));
   if (!$('#chips').children.length) $('#chips').innerHTML = SUGGESTIONS.map(([id, q]) => `<button class="chip-q" data-q="${id}">${esc(q)}</button>`).join('');
 }
 
