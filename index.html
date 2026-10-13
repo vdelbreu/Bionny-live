@@ -116,10 +116,21 @@
         <h3>Objectifs</h3>
         <div class="champs">
           <label class="field"><span>Sommeil</span><input id="objectif" type="number" inputmode="decimal" min="5" max="11" step="0.5"><span class="note">heures par nuit</span></label>
-          <label class="field"><span>Heure de lever</span><input id="reveil" type="time"><span class="note" id="reveilNote"></span></label>
+          <div class="field"><span>Heure de lever</span>
+            <div class="lever-jours" id="leverJours">
+              <label>Lundi<input type="time" data-jour="1"></label>
+              <label>Mardi<input type="time" data-jour="2"></label>
+              <label>Mercredi<input type="time" data-jour="3"></label>
+              <label>Jeudi<input type="time" data-jour="4"></label>
+              <label>Vendredi<input type="time" data-jour="5"></label>
+              <label>Samedi<input type="time" data-jour="6"></label>
+              <label>Dimanche<input type="time" data-jour="0"></label>
+            </div>
+            <span class="note" id="reveilNote"></span>
+          </div>
           <label class="field"><span>Pas</span><input id="objectifPas" type="number" inputmode="numeric" min="1000" max="40000" step="500"><span class="note">par jour</span></label>
         </div>
-        <p class="note">Ton heure de lever sert à calculer quand te coucher. L'alarme, elle, se règle dans l'app Horloge de l'iPhone : le bracelet ne permet pas de programmer un réveil depuis ViaWrist.</p>
+        <p class="note">Ton heure de lever sert à calculer quand te coucher pour être en forme. L'alarme, elle, se règle dans l'app Horloge de l'iPhone : le bracelet ne permet pas de programmer un réveil depuis ViaWrist.</p>
       </article>
 
       <article class="panel">

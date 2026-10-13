@@ -391,3 +391,7 @@ label.bouton{cursor:pointer}
 
 .bandeau-info{margin:0;padding:10px 12px;border-radius:10px;font-size:13.5px;background:color-mix(in srgb,var(--moyen) 14%,var(--panel));border:1px solid color-mix(in srgb,var(--moyen) 45%,var(--line))}
 #dernierPouls{margin:0}
+
+.lever-jours{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px 14px;width:100%}
+.lever-jours label{display:grid;grid-template-columns:5.6em 1fr;align-items:center;gap:8px;font-size:14px;color:var(--ink-2)}
+.action-soir em b{color:var(--ink)}

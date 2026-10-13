@@ -3,10 +3,11 @@
 import { duree, cleJour, debutJour, JOUR } from '../sante.js';
 import { esc, hm } from '../graphes.js';
 import { repere, decalerJour } from '../stats.js';
-import { conseilJour, planSommeil, effortSemaine, OBJECTIF_EFFORT, phraseCoeur, phraseSommeil, phrasePas, heure, seuilsEffort } from '../coach.js';
+import { conseilJour, planSommeil, effortSemaine, OBJECTIF_EFFORT, phraseCoeur, phraseSommeil, phrasePas, phraseBesoin, phraseAvance, heure, seuilsEffort } from '../coach.js';
 import { $, nf, dateLongue, pastille, barreProgression, aDesDonnees } from '../ui.js';
 
 const hhmm = m => { const t = ((Math.round(m) % 1440) + 1440) % 1440; return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; };
+const md = t => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
 const derniereNuit = c => { const n = c.ns.filter(x => x.tst).at(-1); return n && c.maintenant - n.fin < 20 * 3600e3 ? n : null; };
 
 export function rendreJour(c) {
@@ -66,10 +67,11 @@ function carteSommeil(c) {
     <div class="valeur">${n ? duree(n.tst) : '–'}<small>${n ? 'cette nuit' : ''}</small></div>
     <p class="explication">${esc(phraseSommeil(n, plan))}</p>
     ${plan.coucher != null ? `<div class="action-soir">
-      <span>Ce soir, au lit vers</span><strong>${heure(plan.coucher)}</strong>
-      <em>${plan.progressif ? `30 min plus tôt que d'habitude. L'idéal serait ${heure(plan.ideal)}, on y va petit à petit.` : `pour ${duree(plan.besoin)} de sommeil avant ton lever.`}</em>
+      <span>${plan.tard ? "Il est l'heure" : 'Ce soir, au lit vers'}</span><strong>${plan.tard ? 'Au lit' : heure(plan.coucher)}</strong>
+      ${plan.tard ? `<em>Tu peux encore dormir ${duree(plan.possible)} avant ton lever à ${heure(plan.lever)}.</em>`
+        : `<em>${md(phraseBesoin(plan, c.R.objectif * 60e3))}</em>${phraseAvance(plan) ? `<em>${esc(phraseAvance(plan))}</em>` : ''}`}
     </div>` : ''}
-    <label class="lever">Demain je me lève à <input type="time" id="reveilCarte" value="${plan.lever != null ? hhmm(plan.lever) : ''}"></label>
+    <label class="lever">${plan.matin.demain ? plan.matin.nom[0].toUpperCase() + plan.matin.nom.slice(1) : 'Ce matin'}, je me lève à <input type="time" id="reveilCarte" data-jour="${plan.matin.jour}" value="${plan.lever != null ? hhmm(plan.lever) : ''}"></label>
   </article>`;
 }
 

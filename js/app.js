@@ -4,7 +4,7 @@ import { impExemple } from './exemple.js';
 import { initInfobulles, hm } from './graphes.js';
 import { fcMaxTanaka } from './coeur.js';
 import { journees, fiabilite } from './stats.js';
-import { seanceDeclaree, planSommeil, heure } from './coach.js';
+import { seanceDeclaree, planSommeil, heure, matinSuivant, JOURS } from './coach.js';
 import { initLive, majAge, synchroniserBracelet, connecterBracelet, enDirect, lancerDemo } from './live.js';
 import { journal } from './connexion.js';
 import { $, nf, toast } from './ui.js';
@@ -14,8 +14,9 @@ import { rendreDonnees, brancherDonnees, ouvrirDonnees } from './vues/donnees.js
 
 const VUES = ['jour', 'coach', 'donnees', 'reglages'];
 const ANCIENNES = { direct: 'jour', semaine: 'donnees', bilan: 'coach' };
-// objectif en minutes ; reveil = heure de lever « HH:MM » (vide : ton heure habituelle)
-const R = { prenom: '', age: 25, fcmaxMesuree: null, objectif: 480, objectifPas: 8000, reveil: null, raccourci: 'ViaWrist' };
+// objectif en minutes ; leverJours = heure de lever « HH:MM » par jour de la semaine (0 = dimanche), selon tes cours ;
+// reveil = ancienne heure unique, gardée seulement le temps de la reporter sur un jour
+const R = { prenom: '', age: 25, fcmaxMesuree: null, objectif: 480, objectifPas: 8000, reveil: null, leverJours: {}, raccourci: 'ViaWrist' };
 let D = vide(), cache = null, vue = 'jour', pasDirect = null;
 
 /* ---------- Stockage local ---------- */
@@ -51,12 +52,21 @@ function reglagesValides(r) {
     prenom: typeof r.prenom === 'string' ? r.prenom.slice(0, 30) : null,
     age: n(r.age, 10, 99), fcmaxMesuree: n(r.fcmaxMesuree, 120, 230), objectif: n(r.objectif, 240, 720),
     objectifPas: n(r.objectifPas, 1000, 40000), reveil: typeof r.reveil === 'string' && HEURE.test(r.reveil) ? r.reveil : null,
+    leverJours: r.leverJours && typeof r.leverJours === 'object'
+      ? Object.fromEntries(Object.entries(r.leverJours).filter(([j, h]) => /^[0-6]$/.test(j) && typeof h === 'string' && HEURE.test(h))) : null,
     raccourci: typeof r.raccourci === 'string' && r.raccourci.trim() ? r.raccourci.slice(0, 40) : null,
   }).filter(([, v]) => v != null));
 }
 
 function charger() {
   try { Object.assign(R, reglagesValides(JSON.parse(localStorage.getItem('bionny-reglages') || '{}'))); } catch { /* réglages par défaut */ }
+  // ancienne heure de lever unique : elle avait été réglée pour le lendemain, on la reporte sur ce jour-là
+  if (R.reveil) {
+    const j = matinSuivant(Date.now()).jour;
+    if (!R.leverJours[j]) R.leverJours[j] = R.reveil;
+    R.reveil = null;
+    sauverReglages();
+  }
   try { const d = JSON.parse(localStorage.getItem('bionny-sante') || 'null'); if (d?.v === 1) D = nettoyer(d); } catch { /* données illisibles */ }
 }
 function sauverReglages() {
@@ -214,9 +224,9 @@ function rendreReglages() {
   $('#age').value = R.age;
   $('#objectif').value = R.objectif / 60;
   $('#objectifPas').value = R.objectifPas;
-  $('#reveil').value = R.reveil ?? '';
-  const habituel = planSommeil({ ...c, R: { ...R, reveil: null } }).habituel;
-  $('#reveilNote').textContent = R.reveil ? '' : habituel != null ? `vide : ton heure habituelle (${heure(habituel)})` : 'vide : ton heure habituelle';
+  for (const i of document.querySelectorAll('#leverJours input')) i.value = R.leverJours[i.dataset.jour] ?? '';
+  const habituel = planSommeil(c).habituel;
+  $('#reveilNote').textContent = `Selon tes cours. Vide : ton heure habituelle${habituel != null ? ` (${heure(habituel)})` : ''}.`;
   $('#fcmaxMesuree').value = R.fcmaxMesuree ?? '';
   $('#fcmaxMesuree').placeholder = String(fcMaxTanaka(R.age));
   $('#fcmaxNote').textContent = R.fcmaxMesuree ? 'ta valeur mesurée' : `vide : estimée à ${fcMaxTanaka(R.age)} bpm`;
@@ -302,11 +312,13 @@ function demarrer() {
       navigator.clipboard?.writeText(txt).then(() => toast('Copié.'), () => toast('Copie impossible : sélectionne le texte à la main.'));
     }
   });
-  // heure de lever : réglable dans Réglages et directement dans la carte Sommeil
+  // heure de lever par jour de la semaine : réglable dans Réglages et directement dans la carte Sommeil
   document.addEventListener('change', e => {
-    if (e.target.id !== 'reveilCarte' && e.target.id !== 'reveil') return;
-    R.reveil = HEURE.test(e.target.value) ? e.target.value : null;
+    const j = e.target.dataset?.jour;
+    if (j == null || !(e.target.id === 'reveilCarte' || e.target.closest('#leverJours'))) return;
+    if (HEURE.test(e.target.value)) R.leverJours[j] = e.target.value; else delete R.leverJours[j];
     sauverReglages();
+    if (e.target.id === 'reveilCarte') toast(`Retenu pour tous les ${JOURS[j]}s : modifiable dans Réglages.`);
     rendre();
   });
   $('#btnDemo').onclick = lancerDemo;

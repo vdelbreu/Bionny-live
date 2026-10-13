@@ -17,32 +17,48 @@ export const minutesHHMM = s => { const [h, m] = String(s).split(':').map(Number
 const nf = n => Math.round(n).toLocaleString('fr-FR');
 const nuits7 = c => c.ns.filter(n => n.tst && n.fin > c.maintenant - 7 * JOUR);
 
-/* ---------- Sommeil : besoin de ce soir et heure de coucher ---------- */
+/* ---------- Sommeil : besoin de cette nuit et heure de coucher ---------- */
 
-// Besoin = ton objectif + un quart de la dette des 7 dernières nuits (au plus 1 h : on ne rattrape pas tout d'un coup).
-// Heure de lever = ton réglage, sinon la médiane de tes 7 derniers réveils. Coucher idéal = lever − besoin − 15 min.
-// Avancer son coucher d'un coup marche rarement : si l'idéal est à plus de 30 min avant ton heure habituelle,
-// l'objectif de ce soir est ton heure habituelle − 30 min, et on avance encore les soirs suivants.
-const AVANCE_MAX = 30;
-const vers18h = m => ((m - 18 * 60) % 1440 + 1440) % 1440;
+// D'après les références : 7 à 9 h par nuit entre 18 et 25 ans (National Sleep Foundation, 2015) ; une dette se
+// rattrape en dormant un peu plus plusieurs nuits de suite, en se couchant plus tôt plutôt qu'en se levant plus tard
+// (Sleep Foundation). D'où :
+//   besoin  = ton objectif + un quart de la dette de tes 7 dernières nuits, au plus 1 h (9 h au plus pour 8 h) ;
+//   coucher = lever du lendemain − besoin − tes éveils habituels dans la nuit (mesurés) − 15 min pour t'endormir.
+// Le lever dépend de tes cours : il est réglé par jour de la semaine, sinon c'est la médiane de tes réveils.
+// Les « cycles de 90 min » des calculateurs en ligne ne sont pas utilisés : leur durée varie trop selon les
+// personnes et les nuits, et aucune étude solide ne les appuie.
+export const JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+// Matin visé : demain, sauf en pleine nuit (avant 5 h) où c'est ce matin
+export function matinSuivant(maintenant) {
+  const d = new Date(maintenant), demain = d.getHours() >= 5;
+  if (demain) d.setDate(d.getDate() + 1);
+  return { jour: d.getDay(), nom: JOURS[d.getDay()], demain };
+}
+const RATTRAPAGE_MAX = 60;
+const vers18h = m => ((m - 18 * 60) % 1440 + 1440) % 1440;   // minutes depuis 18 h : le soir et la nuit restent dans l'ordre
 export function planSommeil(c) {
   const obj = c.R.objectif * MIN, nuits = nuits7(c);
+  const moy = nuits.length ? moyenne(nuits.map(n => n.tst)) : null;
   const dette = Math.max(0, nuits.reduce((a, n) => a + obj - n.tst, 0));
-  const rattrapage = Math.min(60, Math.round(dette / MIN / 4 / 5) * 5) * MIN;
+  const rattrapage = Math.min(RATTRAPAGE_MAX, Math.round(dette / MIN / 4 / 5) * 5) * MIN;
   const besoin = obj + rattrapage;
+  const eveil = nuits.length ? Math.min(45, Math.max(0, Math.round(mediane(nuits.map(n => (n.fin - n.debut - n.tst) / MIN))))) : 0;
+  const matin = matinSuivant(c.maintenant);
   const levers = nuits.map(n => minutesDuJour(n.fin));
   const habituel = levers.length ? Math.round(mediane(levers) / 5) * 5 : null;
-  const lever = c.R.reveil ? minutesHHMM(c.R.reveil) : habituel;
-  const base = { besoin, dette, rattrapage, lever, habituel, nuits: nuits.length, source: c.R.reveil ? 'reglage' : 'habitude' };
-  if (lever == null) return { ...base, coucher: null, ideal: null, progressif: false };
-  const ideal = lever - besoin / MIN - LATENCE;
-  // heure de coucher habituelle : médiane des endormissements − 15 min, en minutes depuis 18 h (passage de minuit)
-  const couchers = nuits.map(n => vers18h(minutesDuJour(n.debut) - LATENCE));
-  if (!couchers.length) return { ...base, coucher: ideal, ideal, progressif: false };
-  const habitude18 = mediane(couchers), ideal18 = vers18h(ideal);
-  const progressif = ideal18 < habitude18 - AVANCE_MAX;
-  const coucher18 = progressif ? Math.round((habitude18 - AVANCE_MAX) / 5) * 5 : ideal18;
-  return { ...base, ideal, coucher: coucher18 + 18 * 60, coucherHabituel: habitude18 + 18 * 60, progressif };
+  const regle = c.R.leverJours?.[matin.jour] ?? c.R.reveil ?? null;
+  const lever = regle ? minutesHHMM(regle) : habituel;
+  const base = { besoin, dette, rattrapage, moyenne: moy, eveil, lever, habituel, matin, nuits: nuits.length, source: regle ? 'reglage' : 'habitude' };
+  if (lever == null) return { ...base, coucher: null, avance: 0, tard: false, possible: null };
+  const coucher = Math.round((lever - besoin / MIN - eveil - LATENCE) / 5) * 5;
+  // avance sur ton endormissement habituel : au-delà d'1 h, le corps n'a pas encore sommeil, il faut l'y aider
+  const endormis = nuits.map(n => vers18h(minutesDuJour(n.debut)));
+  const avance = endormis.length ? Math.max(0, mediane(endormis) - vers18h(coucher + LATENCE)) : 0;
+  // déjà passé l'heure : on dit combien de sommeil reste possible avant le lever
+  const now = vers18h(minutesDuJour(c.maintenant)), lever18 = vers18h(lever);
+  const tard = now > vers18h(coucher) && now < lever18;
+  const possible = tard ? Math.max(0, lever18 - now - LATENCE - eveil) * MIN : null;
+  return { ...base, coucher, avance, tard, possible };
 }
 
 /* ---------- Effort : minutes au sens de l'OMS ---------- */
@@ -163,7 +179,13 @@ export function detecter(texte) {
 
 const derniereNuit = c => { const n = c.ns.filter(x => x.tst).at(-1); return n && c.maintenant - n.fin < 20 * 3600e3 ? n : null; };
 const NIVEAU = { ok: 'bonne', moyen: 'moyenne', bas: 'faible' };
-const phraseCoucher = p => `**au lit vers ${heure(p.coucher)}**${p.progressif ? " (30 min plus tôt que d'habitude)" : ''}`;
+const phraseCoucher = p => p.tard ? `**au lit maintenant** (encore ${duree(p.possible)} de sommeil possible)` : `**au lit vers ${heure(p.coucher)}**`;
+// Plus ou moins que ton objectif, et pourquoi : moyenne et dette de tes dernières nuits
+export const phraseBesoin = (p, objectif) => p.moyenne == null ? `Vise **${duree(p.besoin)}** de sommeil, ton objectif.`
+  : p.rattrapage ? `Vise **${duree(p.besoin)}**, plus que tes ${duree(objectif)} : tes ${p.nuits} dernières nuits font ${duree(p.moyenne)} en moyenne, il te manque ${duree(p.dette)}.`
+  : `**${duree(p.besoin)}** suffisent : tes ${p.nuits} dernières nuits font ${duree(p.moyenne)} en moyenne, tu es à jour.`;
+export const phraseAvance = p => p.avance >= 60 && !p.tard
+  ? "C'est bien plus tôt que d'habitude : coupe les écrans et tamise la lumière 1 h avant, ça aide à s'endormir." : '';
 const signeBpm = d => Math.abs(d) < 1 ? 'stable' : `${d > 0 ? '+' : ''}${Math.round(d)} bpm sur une semaine`;
 
 // Réponses courtes : 3 lignes au plus, l'essentiel en premier (il ne lit pas les pavés)
@@ -179,11 +201,12 @@ const REPONSES = {
 
   coucher(c) {
     const p = planSommeil(c);
-    if (p.coucher == null) return ["Il me faut au moins une nuit, ou ton heure de lever dans Réglages."];
+    if (p.coucher == null) return ["Dis-moi à quelle heure tu te lèves (carte Sommeil, sur Aujourd'hui) et je calcule ton heure de coucher."];
     return [
-      `Ce soir, **au lit vers ${heure(p.coucher)}**, pour te lever à ${heure(p.lever)}.`,
-      p.progressif ? `C'est 30 min plus tôt que d'habitude. Puis un peu plus tôt tous les 2 ou 3 soirs, jusqu'à ${heure(p.ideal)}.` : '',
-      p.rattrapage ? `Vise **${duree(p.besoin)}** de sommeil : ton objectif, plus ${duree(p.rattrapage)} pour rattraper ta semaine.` : `Vise **${duree(p.besoin)}** de sommeil, ton objectif.`,
+      p.tard ? `Il est l'heure : **va te coucher maintenant**, tu peux encore dormir ${duree(p.possible)} avant ton lever à ${heure(p.lever)}.`
+        : `Ce soir, **au lit vers ${heure(p.coucher)}**, pour te lever à ${heure(p.lever)}.`,
+      phraseBesoin(p, c.R.objectif * MIN),
+      phraseAvance(p),
     ];
   },
 
@@ -256,8 +279,8 @@ const REPONSES = {
 
   mieuxDormir(c) {
     const s = semaine(c), p = planSommeil(c), conseils = [];
-    if (s.regularite > 45 || s.decalageWeekend > 90) conseils.push('**Même heure de coucher et de lever**, week-end compris : pour toi, c\'est le plus efficace.');
-    if (p.progressif) conseils.push(`**Avance ton coucher** de 15 à 30 min tous les 2 ou 3 soirs, jusqu'à ${heure(p.ideal)}.`);
+    if (s.regularite > 45 || s.decalageWeekend > 90) conseils.push('**Des horaires réguliers**, moins d\'1 h d\'écart d\'un jour à l\'autre : chez les étudiants, c\'est lié à de meilleurs résultats.');
+    if (p.avance >= 60) conseils.push(`**Écrans coupés et lumière tamisée** 1 h avant ${heure(p.coucher)} : ton corps a l'habitude de s'endormir plus tard.`);
     conseils.push('**Lumière du jour le matin**, écrans en mode nuit le soir.', '**Pas de café après 14 h**, chambre fraîche et sombre.');
     return conseils.slice(0, 3);
   },

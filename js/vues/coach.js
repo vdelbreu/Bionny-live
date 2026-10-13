@@ -14,7 +14,7 @@ export function rendreCoach(c) {
   const s = semaine(c), p = planSommeil(c);
   $('#coachSemaine').innerHTML = aDesDonnees(c.D) ? `<div class="tuiles grandes resume-semaine">
     <div><span>Sommeil</span><strong>${s.tst ? duree(s.tst) : '–'}</strong><em>en moyenne, ${s.nuits} nuit${s.nuits > 1 ? 's' : ''}</em></div>
-    <div><span>Au lit ce soir</span><strong>${p.coucher != null ? heure(p.coucher) : '–'}</strong><em>${p.lever != null ? 'pour te lever à ' + heure(p.lever) : ''}</em></div>
+    <div><span>Au lit ce soir</span><strong>${p.coucher == null ? '–' : p.tard ? 'Maintenant' : heure(p.coucher)}</strong><em>${p.lever != null ? 'pour te lever à ' + heure(p.lever) : ''}</em></div>
     <div><span>Effort</span><strong>${s.effort.total}<small> / ${OBJECTIF_EFFORT} min</small></strong><em>cette semaine</em></div>
     <div><span>Cœur au repos</span><strong>${s.rhr.cette ? Math.round(s.rhr.cette.moy) + '<small>bpm</small>' : '–'}</strong><em>moyenne 7 jours</em></div>
   </div>` : '';

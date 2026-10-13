@@ -22,20 +22,43 @@ function contexte({ heures = 7, reveil = null, fcJour = 75 } = {}) {
   return { D, R: r, ns, J: journees(D, ns, 200), fiab: fiabilite(D, ns), fcmax: 200, maintenant: jour(14, 12), pasDirect: null };
 }
 
-test('planSommeil : dette, rattrapage plafonné à 1 h, coucher calculé depuis le lever', () => {
+test('planSommeil : dette, rattrapage plafonné à 1 h, coucher calculé depuis le lever, jamais depuis l\'habitude', () => {
   const p = planSommeil(contexte());
   assert.equal(p.dette, 7 * H);                    // 7 nuits à 1 h sous l'objectif
+  assert.equal(p.moyenne, 7 * H);
   assert.equal(p.rattrapage, 60 * MIN);             // un quart de la dette, plafonné à 1 h
   assert.equal(p.besoin, 9 * H);
   assert.equal(heure(p.lever), '6 h 00');           // médiane des réveils
-  assert.equal(heure(p.ideal), '20 h 45');          // 6 h − 9 h − 15 min
-  assert.equal(p.progressif, true);                 // 2 h avant l'habitude (22 h 45) : on avance de 30 min seulement
-  assert.equal(heure(p.coucher), '22 h 15');
+  assert.equal(heure(p.coucher), '20 h 45');        // 6 h − 9 h − 15 min : assez de sommeil, même si c'est tôt
+  assert.equal(p.avance, 120);                      // 2 h avant l'endormissement habituel (23 h) : on le signale
+  assert.equal(p.tard, false);
   const r = planSommeil(contexte({ heures: 8, reveil: '07:30' }));
   assert.equal(r.dette, 0);
   assert.equal(r.source, 'reglage');
-  assert.equal(heure(r.coucher), '23 h 15');        // 7 h 30 − 8 h − 15 min, à 30 min de l'habitude : atteignable
-  assert.equal(r.progressif, false);
+  assert.equal(heure(r.coucher), '23 h 15');        // 7 h 30 − 8 h − 15 min
+  assert.equal(r.avance, 0);
+});
+
+test('planSommeil : le lever suit le jour de la semaine (cours à 8 h ou 9 h 30)', () => {
+  const c = contexte({ heures: 8 });                // mercredi 14 à midi : la nuit visée finit jeudi 15
+  c.R.leverJours = { 4: '09:00', 5: '07:00' };
+  const p = planSommeil(c);
+  assert.equal(p.matin.nom, 'jeudi');
+  assert.equal(heure(p.coucher), '0 h 45');         // 9 h − 8 h − 15 min
+  c.maintenant = jour(15, 12);                      // le lendemain, on vise vendredi
+  assert.equal(heure(planSommeil(c).coucher), '22 h 45');
+  c.maintenant = jour(16, 2);                       // en pleine nuit, le matin visé est celui du jour même
+  assert.equal(planSommeil(c).matin.nom, 'vendredi');
+});
+
+test('planSommeil : passé l\'heure, il dit combien de sommeil reste possible', () => {
+  const c = contexte({ heures: 8, reveil: '07:00' });
+  c.maintenant = jour(14, 23, 30);
+  const p = planSommeil(c);
+  assert.equal(heure(p.coucher), '22 h 45');
+  assert.equal(p.tard, true);
+  assert.equal(p.possible, 7 * H + 15 * MIN);       // 23 h 30 → 7 h, moins 15 min pour s'endormir
+  assert.match(repondre('coucher', c).lignes[0], /va te coucher maintenant\*\*, tu peux encore dormir 7 h 15/);
 });
 
 test('effort : 64 % de la FC max = modéré, 77 % = intense compté double, une séance remplace les relevés', () => {
@@ -75,9 +98,10 @@ test('repondre : chaque suggestion donne des phrases complètes, sans valeur man
     }
   }
   const coucher = repondre('coucher', contexte()).lignes;
-  assert.match(coucher[0], /au lit vers 22 h 15\*\*, pour te lever à 6 h 00/);
-  assert.match(coucher[1], /30 min plus tôt que d'habitude/);
-  assert.match(coucher[1], /jusqu'à 20 h 45/);
+  assert.match(coucher[0], /au lit vers 20 h 45\*\*, pour te lever à 6 h 00/);
+  assert.match(coucher[1], /Vise \*\*9 h 00\*\*, plus que tes 8 h 00 : tes 7 dernières nuits font 7 h 00 en moyenne, il te manque 7 h 00/);
+  assert.match(coucher[2], /bien plus tôt que d'habitude/);
+  assert.match(repondre('coucher', contexte({ heures: 8, reveil: '07:30' })).lignes[1], /\*\*8 h 00\*\* suffisent/);
 });
 
 test('repondre : une question libre incomprise le dit, au lieu de répondre à côté', () => {
