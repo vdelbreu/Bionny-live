@@ -163,147 +163,135 @@ export function detecter(texte) {
 
 const derniereNuit = c => { const n = c.ns.filter(x => x.tst).at(-1); return n && c.maintenant - n.fin < 20 * 3600e3 ? n : null; };
 const NIVEAU = { ok: 'bonne', moyen: 'moyenne', bas: 'faible' };
-const phraseCoucher = p => p.progressif
-  ? `**au lit vers ${heure(p.coucher)}** (30 min plus tôt que d'habitude), puis un peu plus tôt chaque soir jusqu'à ${heure(p.ideal)}`
-  : `**au lit vers ${heure(p.coucher)}**`;
-const pourcent = (a, b) => Math.round(a / b * 100);
+const phraseCoucher = p => `**au lit vers ${heure(p.coucher)}**${p.progressif ? " (30 min plus tôt que d'habitude)" : ''}`;
+const signeBpm = d => Math.abs(d) < 1 ? 'stable' : `${d > 0 ? '+' : ''}${Math.round(d)} bpm sur une semaine`;
 
+// Réponses courtes : 3 lignes au plus, l'essentiel en premier (il ne lit pas les pavés)
 const REPONSES = {
   jour(c) {
     const cj = conseilJour(c), plan = planSommeil(c), n = derniereNuit(c);
     return [
-      n ? `Cette nuit : **${duree(n.tst)}** de sommeil, récupération **${NIVEAU[cj.rec?.niveau] ?? 'non calculée'}**.` : "Je n'ai pas encore ta dernière nuit : synchronise le bracelet.",
+      n ? `Cette nuit : **${duree(n.tst)}** de sommeil, récupération **${NIVEAU[cj.rec?.niveau] ?? 'non calculée'}**.` : "Synchronise le bracelet pour que j'aie ta dernière nuit.",
       `Aujourd'hui : **${cj.titre.toLowerCase()}**. ${cj.phrase}`,
-      plan.coucher != null ? `Ce soir : ${phraseCoucher(plan)}, pour te lever à ${heure(plan.lever)}.` : '',
+      plan.coucher != null ? `Ce soir : ${phraseCoucher(plan)}.` : '',
     ];
   },
 
   coucher(c) {
-    const p = planSommeil(c), s = semaine(c);
-    if (p.coucher == null) return ["Il me faut au moins une nuit, ou ton heure de lever dans Réglages, pour calculer ton heure de coucher."];
+    const p = planSommeil(c);
+    if (p.coucher == null) return ["Il me faut au moins une nuit, ou ton heure de lever dans Réglages."];
     return [
-      `Pour te lever à **${heure(p.lever)}**${p.source === 'habitude' ? ' (ton heure habituelle)' : ''} : ${phraseCoucher(p)}.`,
-      p.progressif ? `L'idéal, ${heure(p.ideal)}, est loin de ton heure habituelle (${heure(p.coucherHabituel)}) : changer d'un coup marche rarement, ton corps s'adapte de 15 à 30 min à la fois.` : '',
-      p.rattrapage ? `Ton besoin ce soir : ${duree(p.besoin)}, soit ton objectif de ${duree(c.R.objectif * MIN)} plus ${duree(p.rattrapage)} pour rattraper ta dette de la semaine (${duree(p.dette)}).`
-        : `Ton besoin ce soir : ${duree(p.besoin)}, ton objectif. Pas de dette à rattraper cette semaine.`,
-      s.decalageWeekend != null && s.decalageWeekend > 90 ? `Le week-end, tu te lèves ${duree(Math.round(s.decalageWeekend / 5) * 5 * MIN)} plus tard qu'en semaine : ce décalage rend le lundi difficile. Essaie de rester à moins d'une heure.`
-        : s.regularite != null && s.regularite > 45 ? `Tes heures d'endormissement varient beaucoup (± ${Math.round(s.regularite)} min) : une heure fixe aide à s'endormir plus vite.` : '',
-      p.source === 'habitude' ? 'Tu peux régler ton heure de lever dans Réglages.' : '',
+      `Ce soir, **au lit vers ${heure(p.coucher)}**, pour te lever à ${heure(p.lever)}.`,
+      p.progressif ? `C'est 30 min plus tôt que d'habitude. Puis un peu plus tôt tous les 2 ou 3 soirs, jusqu'à ${heure(p.ideal)}.` : '',
+      p.rattrapage ? `Vise **${duree(p.besoin)}** de sommeil : ton objectif, plus ${duree(p.rattrapage)} pour rattraper ta semaine.` : `Vise **${duree(p.besoin)}** de sommeil, ton objectif.`,
     ];
   },
 
   sommeil(c) {
     const n = derniereNuit(c), s = semaine(c), obj = c.R.objectif * MIN;
     if (!s.nuits) return ['Aucune nuit ces 7 derniers jours : garde le bracelet la nuit et synchronise le matin.'];
-    const lignes = [];
-    if (n) lignes.push(`Cette nuit : **${duree(n.tst)}** (${heure(minutesDuJour(n.debut))} → ${heure(minutesDuJour(n.fin))}), ${pourcent(n.tst, obj)} % de ton objectif.`);
-    lignes.push(`Sur ${s.nuits} nuits : **${duree(s.tst)}** en moyenne, endormi vers ${heure(s.coucher)}${s.regularite != null ? ` (± ${Math.round(s.regularite)} min)` : ''}.`);
-    if (n?.aDesStades) lignes.push(`Sommeil profond ${duree(n.stades.deep)}, paradoxal ${duree(n.stades.rem)}. Le profond répare le corps, le paradoxal (les rêves) trie la mémoire et les émotions.`);
-    if (s.tst < obj - 30 * MIN) lignes.push('Tu dors moins que ton objectif : le plus simple est d\'avancer ton coucher de 30 min.');
-    else if (s.regularite > 45) lignes.push('Tes horaires bougent beaucoup : vise la même heure de coucher chaque soir.');
-    else lignes.push('Bon rythme, continue comme ça.');
-    return lignes;
+    return [
+      n ? `Cette nuit : **${duree(n.tst)}** (${heure(minutesDuJour(n.debut))} → ${heure(minutesDuJour(n.fin))})${n.aDesStades ? `, dont ${duree(n.stades.deep)} de sommeil profond, celui qui répare le corps` : ''}.` : '',
+      `Sur ${s.nuits} nuit${s.nuits > 1 ? 's' : ''} : **${duree(s.tst)}** en moyenne, endormi vers ${heure(s.coucher)}.`,
+      s.tst < obj - 30 * MIN ? 'Tu dors moins que ton objectif : avance ton coucher de 30 min.'
+        : s.regularite > 45 ? `Tes horaires bougent beaucoup (± ${Math.round(s.regularite)} min) : vise la même heure chaque soir.` : 'Bon rythme, continue comme ça.',
+    ];
   },
 
   sport(c) {
-    const cj = conseilJour(c), e = effortSemaine(c), sl = seuilsEffort(c.fcmax), s = semaine(c);
-    const lignes = [`**${cj.titre}**. ${cj.phrase}`,
-      `Cette semaine : **${e.total} min d'effort** sur les ${OBJECTIF_EFFORT} conseillées par l'OMS (cœur au-dessus de ${sl.modere} bpm, et l'intense au-dessus de ${sl.intense} bpm compte double).`];
-    if (e.total < 30 && s.pas.cette?.moy > 7000) lignes.push(`Tu marches beaucoup (${nf(s.pas.cette.moy)} pas par jour) mais ton cœur monte rarement : 2 ou 3 séances de cardio par semaine feraient la différence.`);
-    if (e.total < OBJECTIF_EFFORT) lignes.push('Tu ne portes pas le bracelet au sport : ajoute tes séances avec « J\'ai fait du sport » (carte Activité) pour qu\'elles comptent.');
-    return lignes;
+    const cj = conseilJour(c), e = effortSemaine(c), s = semaine(c);
+    return [
+      `**${cj.titre}**. ${cj.phrase}`,
+      `Cette semaine : **${e.total} min d'effort** sur les ${OBJECTIF_EFFORT} conseillées.`,
+      e.total < 30 && s.pas.cette?.moy > 7000 ? 'Tu marches beaucoup, mais ton cœur monte rarement : 2 ou 3 séances de cardio feraient la différence.'
+        : e.total < OBJECTIF_EFFORT ? "Sport fait sans le bracelet ? Ajoute-le avec « J'ai fait du sport », sur Aujourd'hui." : '',
+    ];
   },
 
   energie(c) {
     const s = semaine(c), p = planSommeil(c), cj = conseilJour(c), e = effortSemaine(c);
     const causes = [];
     if (p.dette >= 60 * MIN) causes.push(`Tu as **${duree(p.dette)} de sommeil en retard** sur 7 nuits.`);
-    if (s.coucher != null && s.coucher > 30 && s.coucher < 6 * 60) causes.push(`Tu t'endors tard (vers ${heure(s.coucher)}) : la fin de nuit est souvent écourtée par le réveil.`);
+    if (s.coucher != null && s.coucher > 30 && s.coucher < 6 * 60) causes.push(`Tu t'endors tard (vers ${heure(s.coucher)}) : le réveil coupe ta fin de nuit.`);
     if (s.regularite > 45) causes.push(`Tes horaires varient de ± ${Math.round(s.regularite)} min : ton horloge interne se dérègle.`);
-    if (s.decalageWeekend > 90) causes.push(`Tu te lèves ${duree(Math.round(s.decalageWeekend / 5) * 5 * MIN)} plus tard le week-end : c'est un petit décalage horaire chaque semaine.`);
-    if (cj.rec?.raisons.some(r => /FC de repos/.test(r.texte) && r.niveau !== 'ok')) causes.push('Ta FC de repos est au-dessus de ta normale : fatigue accumulée, stress, alcool ou début de maladie.');
-    if (e.total < 30) causes.push('Très peu d\'effort cardio cette semaine : bouger régulièrement donne plus d\'énergie, pas moins.');
-    if (!causes.length) return ['Tes données ne montrent rien d\'anormal : sommeil, rythme et cœur sont bons.', "Regarde du côté de l'alimentation, de l'eau et de ta charge de travail. Si la fatigue dure plus de 2 semaines, parles-en à un médecin."];
-    return ['D\'après tes données, les causes les plus probables :', ...causes.slice(0, 3), 'Commence par la première : c\'est là que tu gagneras le plus.'];
+    if (s.decalageWeekend > 90) causes.push(`Tu te lèves ${duree(Math.round(s.decalageWeekend / 5) * 5 * MIN)} plus tard le week-end : un petit décalage horaire chaque semaine.`);
+    if (cj.rec?.raisons.some(r => /FC de repos/.test(r.texte) && r.niveau !== 'ok')) causes.push('Ton cœur au repos est plus haut que d\'habitude : fatigue, stress, alcool ou début de maladie.');
+    if (e.total < 30) causes.push('Presque pas d\'effort cette semaine : bouger donne de l\'énergie, pas l\'inverse.');
+    if (!causes.length) return ['Rien d\'anormal dans tes données : sommeil, rythme et cœur sont bons.', "Regarde l'alimentation, l'eau et ta charge de travail. Si ça dure plus de 2 semaines, vois un médecin."];
+    return causes.slice(0, 3);   // de la plus forte à la plus faible
   },
 
   coeur(c) {
     const n = derniereNuit(c), auj = cleJour(c.maintenant);
     const r = repere(c.J, decalerJour(auj, n ? 0 : 1), j => j.rhr);
     const v = n?.fcNuit?.repos ?? [...c.J.values()].reverse().find(j => j.rhr != null)?.rhr ?? null;
-    if (v == null) return ['Pas encore de FC de repos : il faut une nuit mesurée.'];
-    const lignes = [`FC de repos : **${v} bpm**${r ? ` (ta normale : ${Math.round(r.bas)} à ${Math.round(r.haut)})` : ''}. ${phraseCoeur(v, r)}`,
-      'Chez un adulte, 50 à 70 bpm au repos est courant ; plus bas veut souvent dire un cœur entraîné.'];
-    // tendance sur 30 jours : moyenne des 10 premiers jours face aux 10 derniers
+    if (v == null) return ['Pas encore de cœur au repos : il faut une nuit mesurée.'];
+    const lignes = [`Cœur au repos : **${v} bpm**${r ? ` (ta normale : ${Math.round(r.bas)} à ${Math.round(r.haut)})` : ''}. ${phraseCoeur(v, r)}`];
+    // tendance sur 30 jours : moyenne des 7 premiers jours face aux 7 derniers
     const serie = joursPasses(30, c.maintenant).map(k => c.J.get(k)?.rhr).filter(Number.isFinite);
-    if (serie.length >= 14) {
-      const d = moyenne(serie.slice(-7)) - moyenne(serie.slice(0, 7));
-      if (d <= -2) lignes.push(`Elle a baissé de ${Math.round(-d)} bpm en un mois : ta forme progresse.`);
-      else if (d >= 3) lignes.push(`Elle a monté de ${Math.round(d)} bpm en un mois : plus de sommeil et moins d'alcool aident à la faire redescendre.`);
-      else lignes.push('Elle est stable sur le mois.');
-    }
-    if (v >= (r?.moy ?? 999) + 10) lignes.push('Si elle reste aussi haute plusieurs jours ou si tu te sens mal, parles-en à un médecin.');
+    const d = serie.length >= 14 ? moyenne(serie.slice(-7)) - moyenne(serie.slice(0, 7)) : null;
+    lignes.push(d == null ? 'Entre 50 et 70 bpm au repos, c\'est courant ; plus bas, c\'est souvent un cœur entraîné.'
+      : d <= -2 ? `Il a baissé de ${Math.round(-d)} bpm en un mois : ta forme progresse.`
+      : d >= 3 ? `Il a monté de ${Math.round(d)} bpm en un mois : plus de sommeil et moins d'alcool aident.` : 'Stable sur le mois.');
+    if (v >= (r?.moy ?? 999) + 10) lignes.push('S\'il reste aussi haut plusieurs jours ou si tu te sens mal, vois un médecin.');
     return lignes;
   },
 
   pas(c) {
     const auj = cleJour(c.maintenant), j = c.J.get(auj), s = semaine(c);
     const pas = Math.max(j?.pas ?? 0, c.pasDirect?.cle === auj ? c.pasDirect.pas : 0);
-    return [`Aujourd'hui : **${nf(pas)} pas** pour un objectif de ${nf(c.R.objectifPas)}. ${phrasePas(pas, c.R.objectifPas, true)}`,
-      s.pas.cette ? `Moyenne des 7 derniers jours : ${nf(s.pas.cette.moy)} pas par jour.` : '',
-      'Marcher compte pour ta santé, mais pour le cœur, il faut aussi des moments où il accélère vraiment.'];
+    return [`Aujourd'hui : **${nf(pas)} pas** sur ${nf(c.R.objectifPas)}. ${phrasePas(pas, c.R.objectifPas, true)}`,
+      s.pas.cette ? `Moyenne sur 7 jours : ${nf(s.pas.cette.moy)} pas par jour.` : ''];
   },
 
   semaine(c) {
     const s = semaine(c), p = planSommeil(c);
-    const d = s.rhr.ecart;
     return [
-      s.nuits ? `Sommeil : **${duree(s.tst)}** par nuit en moyenne, endormi vers ${heure(s.coucher)}${s.regularite != null ? ` (± ${Math.round(s.regularite)} min)` : ''}. Dette : ${duree(p.dette)}.` : 'Sommeil : pas de nuit cette semaine.',
-      s.rhr.cette ? `Cœur au repos : **${Math.round(s.rhr.cette.moy)} bpm**${d != null ? `, ${Math.abs(d) < 1 ? 'stable' : d > 0 ? `+${Math.round(d)} par rapport à la semaine d'avant` : `${Math.round(d)} par rapport à la semaine d'avant`}` : ''}.` : '',
-      s.pas.cette ? `Activité : **${nf(s.pas.cette.moy)} pas** par jour, **${s.effort.total} min d'effort** sur ${OBJECTIF_EFFORT}.` : `Effort : ${s.effort.total} min sur ${OBJECTIF_EFFORT}.`,
-      s.effort.total < OBJECTIF_EFFORT / 2 ? 'Ta priorité cette semaine : 2 ou 3 séances où ton cœur monte vraiment.'
-        : s.tst != null && s.tst < c.R.objectif * MIN - 30 * MIN ? 'Ta priorité cette semaine : dormir plus, en avançant ton coucher.' : 'Belle semaine, garde ce rythme.',
+      s.nuits ? `Sommeil : **${duree(s.tst)}** par nuit, endormi vers ${heure(s.coucher)}${p.dette >= 30 * MIN ? `, ${duree(p.dette)} de retard` : ''}.` : 'Sommeil : pas de nuit cette semaine.',
+      `Activité : ${s.pas.cette ? `**${nf(s.pas.cette.moy)} pas** par jour, ` : ''}**${s.effort.total} min d'effort** sur ${OBJECTIF_EFFORT}${s.rhr.cette ? `. Cœur au repos : ${Math.round(s.rhr.cette.moy)} bpm${s.rhr.ecart != null ? `, ${signeBpm(s.rhr.ecart)}` : ''}` : ''}.`,
+      s.effort.total < OBJECTIF_EFFORT / 2 ? 'Ta priorité : 2 ou 3 séances où ton cœur monte vraiment.'
+        : s.tst != null && s.tst < c.R.objectif * MIN - 30 * MIN ? 'Ta priorité : dormir plus, en avançant ton coucher.' : 'Belle semaine, garde ce rythme.',
     ];
   },
 
   mieuxDormir(c) {
-    const s = semaine(c), conseils = [];
-    if (s.regularite > 45 || s.decalageWeekend > 90) conseils.push('**Même heure de coucher et de lever**, week-end compris : c\'est le conseil le plus efficace pour toi d\'après tes données.');
-    const p = planSommeil(c);
+    const s = semaine(c), p = planSommeil(c), conseils = [];
+    if (s.regularite > 45 || s.decalageWeekend > 90) conseils.push('**Même heure de coucher et de lever**, week-end compris : pour toi, c\'est le plus efficace.');
     if (p.progressif) conseils.push(`**Avance ton coucher** de 15 à 30 min tous les 2 ou 3 soirs, jusqu'à ${heure(p.ideal)}.`);
-    conseils.push('**Lumière du jour le matin**, écrans en mode nuit le soir.', '**Pas de café après 14 h**, et une chambre fraîche (18 °C) et sombre.');
-    return [...conseils.slice(0, 3), 'Les conseils en gras viennent d\'abord de tes données, puis des recommandations classiques sur le sommeil.'];
+    conseils.push('**Lumière du jour le matin**, écrans en mode nuit le soir.', '**Pas de café après 14 h**, chambre fraîche et sombre.');
+    return conseils.slice(0, 3);
   },
 
   oxygene(c) {
     const v = [...c.J.values()].filter(j => j.nuit?.spo2Nuit).slice(-7);
     if (!v.length) return ["Pas encore de mesure d'oxygène la nuit."];
     const moy = Math.round(moyenne(v.map(j => j.nuit.spo2Nuit.moy))), min = Math.min(...v.map(j => j.nuit.spo2Nuit.min));
-    return [`Oxygène la nuit : **${moy} %** en moyenne, minimum ${min} % (${v.length} nuit${v.length > 1 ? 's' : ''}).`,
-      moy >= 95 ? 'Normal : entre 95 et 100 %, ton sang transporte bien l\'oxygène.' : 'Un peu bas. Au poignet la mesure est imprécise ; si ça se répète, parles-en à un médecin.'];
+    return [`Oxygène la nuit : **${moy} %** en moyenne, minimum ${min} %.`,
+      moy >= 95 ? 'Normal : entre 95 et 100 %, ton sang transporte bien l\'oxygène.' : 'Un peu bas. Au poignet la mesure est imprécise ; si ça se répète, vois un médecin.'];
   },
 
   stress(c) {
     return [
-      c.fiab.stress.fiable ? 'Ton indice de stress est affiché dans Données.' : 'Le bracelet donne un « stress », mais il ne réagit pas comme un vrai : il est plus haut quand tu dors. Je ne l\'utilise pas pour ne pas te tromper.',
-      c.fiab.vfc.fiable ? 'Ta variabilité cardiaque est affichée dans Données.' : 'Même chose pour la « variabilité » : ses valeurs restent entre 30 et 50 quoi qu\'il arrive. Ta FC de repos est un bien meilleur indicateur de fatigue.',
+      c.fiab.stress.fiable ? 'Ton stress est affiché dans Données.' : 'Le « stress » du bracelet monte quand tu dors, ce qu\'un vrai stress ne fait pas : je ne l\'utilise pas.',
+      c.fiab.vfc.fiable ? 'Ta variabilité cardiaque est affichée dans Données.' : 'Sa « variabilité » ne bouge presque pas : je ne l\'utilise pas. Pour ta fatigue, ton cœur au repos est plus fiable.',
     ];
   },
 
   calories() {
-    return ['Je n\'affiche pas les calories : le bracelet ne précise pas leur unité, et je préfère ne rien montrer plutôt qu\'un chiffre faux.',
-      'Pour ta forme, regarde plutôt ton sommeil, tes minutes d\'effort et ta FC de repos.'];
+    return ['Je n\'affiche pas les calories : le bracelet ne dit pas leur unité, et je préfère ne rien montrer plutôt qu\'un chiffre faux.'];
   },
 
   aide() {
-    return ['Je réponds à partir de tes données : sommeil, heure de coucher, sport, fatigue, cœur, pas, ta semaine.', 'Choisis une question ci-dessous ou écris la tienne simplement.'];
+    return ['Je réponds à partir de tes données. Touche une question au-dessus, ou écris la tienne.'];
   },
 };
+const INCOMPRIS = ["Je n'ai pas compris.", 'Je sais répondre sur ton sommeil, ton heure de coucher, le sport, la fatigue, ton cœur, tes pas et ta semaine.'];
 
 // Réponse en lignes de texte (**gras** autorisé). question = identifiant de suggestion ou texte libre.
 export function repondre(question, c) {
   const id = REPONSES[question] ? question : detecter(question);
-  return { id, lignes: REPONSES[id](c).filter(Boolean) };
+  const lignes = id === 'aide' && question !== 'aide' ? INCOMPRIS : REPONSES[id](c);
+  return { id, lignes: lignes.filter(Boolean) };
 }
 
 // Séance de sport déclarée : soutenu (souffle court) compte comme intense, tranquille comme modéré

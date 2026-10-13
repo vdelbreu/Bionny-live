@@ -361,13 +361,24 @@ label.bouton{cursor:pointer}
 /* ---------- Coach ---------- */
 .resume-semaine{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
 .chat-panel{gap:10px}
-.chat{display:flex;flex-direction:column;gap:10px;max-height:55vh;overflow-y:auto;padding:2px}
+.chat{display:grid;gap:14px}
+/* l'échange le plus récent en haut, juste sous la question : visible même clavier fermé à peine */
+.echange{display:flex;flex-direction:column;gap:8px;scroll-margin:12px 0 calc(var(--nav-h) + env(safe-area-inset-bottom,0px) + 12px)}
+.echange.ancien{opacity:.55}
+.echange.nouveau{animation:apparait .2s ease-out}
+@keyframes apparait{from{opacity:0}}
+@media (prefers-reduced-motion: reduce){.echange.nouveau{animation:none}}
 .bulle{max-width:88%;padding:10px 13px;border-radius:14px;font-size:14.5px;line-height:1.45}
 .bulle p{margin:0}
 .bulle p+p{margin-top:6px}
 .bulle.coach{align-self:flex-start;background:var(--bg);border:1px solid var(--line);border-bottom-left-radius:4px}
 .bulle.moi{align-self:flex-end;background:var(--ink);color:var(--panel);border-bottom-right-radius:4px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
+@media (max-width:640px){
+  /* sur téléphone : une seule ligne qui défile, pour que la réponse reste à l'écran */
+  .chips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:0 16px}
+  .chips::-webkit-scrollbar{display:none}
+}
 .chip-q{flex:none;border-radius:999px;font-size:13px;font-weight:500;padding:7px 12px;min-height:34px}
 .saisie{display:flex;gap:8px}
 .saisie input{flex:1;min-width:0;font:inherit;font-size:16px;padding:9px 12px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--ink)}

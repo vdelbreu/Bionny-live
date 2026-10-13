@@ -67,10 +67,24 @@ test('repondre : chaque suggestion donne des phrases complètes, sans valeur man
       const r = repondre(id, c);
       assert.equal(r.id, id);
       assert.ok(r.lignes.length >= 1, id);
-      for (const l of r.lignes) assert.doesNotMatch(l, /undefined|NaN|null|\[object/, `${id} : ${l}`);
+      assert.ok(r.lignes.length <= 3, `${id} : réponse trop longue (${r.lignes.length} lignes)`);
+      for (const l of r.lignes) {
+        assert.doesNotMatch(l, /undefined|NaN|null|\[object/, `${id} : ${l}`);
+        assert.ok(l.length <= 170, `${id} : phrase trop longue : ${l}`);
+      }
     }
   }
-  assert.match(repondre('coucher', contexte()).lignes[0], /au lit vers 22 h 15\*\* \(30 min plus tôt que d'habitude\), puis un peu plus tôt chaque soir jusqu'à 20 h 45/);
+  const coucher = repondre('coucher', contexte()).lignes;
+  assert.match(coucher[0], /au lit vers 22 h 15\*\*, pour te lever à 6 h 00/);
+  assert.match(coucher[1], /30 min plus tôt que d'habitude/);
+  assert.match(coucher[1], /jusqu'à 20 h 45/);
+});
+
+test('repondre : une question libre incomprise le dit, au lieu de répondre à côté', () => {
+  const r = repondre('bonjour', contexte());
+  assert.equal(r.id, 'aide');
+  assert.match(r.lignes[0], /pas compris/);
+  assert.doesNotMatch(repondre('aide', contexte()).lignes[0], /pas compris/);
 });
 
 test('conseilJour : après une bonne nuit et peu d\'effort, il propose une vraie séance', () => {

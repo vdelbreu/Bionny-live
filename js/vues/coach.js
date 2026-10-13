@@ -18,21 +18,27 @@ export function rendreCoach(c) {
     <div><span>Effort</span><strong>${s.effort.total}<small> / ${OBJECTIF_EFFORT} min</small></strong><em>cette semaine</em></div>
     <div><span>Cœur au repos</span><strong>${s.rhr.cette ? Math.round(s.rhr.cette.moy) + '<small>bpm</small>' : '–'}</strong><em>moyenne 7 jours</em></div>
   </div>` : '';
-  if (!fil.length) fil.push({ qui: 'coach', ...repondre(aDesDonnees(c.D) ? 'jour' : 'aide', c) });
+  if (!fil.length) fil.push({ q: null, ...repondre(aDesDonnees(c.D) ? 'jour' : 'aide', c) });
   dessiner();
 }
 
+// Le plus récent en haut, juste sous les questions : la réponse apparaît là où l'on regarde
 function dessiner() {
-  $('#chat').innerHTML = fil.slice(-30).map(m => `<div class="bulle ${m.qui}">${m.lignes.map(l => `<p>${m.qui === 'moi' ? esc(l) : md(l)}</p>`).join('')}</div>`).join('');
-  $('#chips').innerHTML = SUGGESTIONS.map(([id, q]) => `<button class="chip-q" data-q="${id}">${esc(q)}</button>`).join('');
-  const chat = $('#chat');
-  chat.scrollTop = chat.scrollHeight;
+  $('#chat').innerHTML = fil.slice(-4).reverse().map((e, i) => `<div class="echange${i ? ' ancien' : ''}">
+    ${e.q ? `<div class="bulle moi"><p>${esc(e.q)}</p></div>` : ''}
+    <div class="bulle coach">${e.lignes.map(l => `<p>${md(l)}</p>`).join('')}</div>
+  </div>`).join('');
+  if (!$('#chips').children.length) $('#chips').innerHTML = SUGGESTIONS.map(([id, q]) => `<button class="chip-q" data-q="${id}">${esc(q)}</button>`).join('');
 }
 
 function poser(question, texte) {
-  fil.push({ qui: 'moi', lignes: [texte] });
-  fil.push({ qui: 'coach', ...repondre(question, contexte) });
+  fil.push({ q: texte, ...repondre(question, contexte) });
   dessiner();
+  const nouveau = $('#chat .echange');
+  nouveau.classList.add('nouveau');
+  // ferme le clavier de l'iPhone, puis montre la réponse une fois l'écran redimensionné
+  if (document.activeElement === $('#question')) $('#question').blur();
+  setTimeout(() => nouveau.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 300);
 }
 
 export function brancherCoach(obtenirContexte) {

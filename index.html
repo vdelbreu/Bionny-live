@@ -75,15 +75,15 @@
     <!-- ===== Coach ===== -->
     <section class="vue" id="vue-coach" data-vue="coach" hidden>
       <div class="entete"><div><h2 class="titre-vue">Coach</h2><p class="note">Il lit tes données sur ce téléphone, rien d'autre. Ce n'est pas un médecin.</p></div></div>
-      <div id="coachSemaine"></div>
       <article class="panel chat-panel">
-        <div class="chat" id="chat" aria-live="polite"></div>
-        <div class="chips" id="chips"></div>
         <form class="saisie" id="saisieCoach">
-          <input id="question" type="text" placeholder="Pose ta question…" autocomplete="off" maxlength="200" aria-label="Ta question">
+          <input id="question" type="text" placeholder="Pose ta question…" autocomplete="off" enterkeyhint="send" maxlength="200" aria-label="Ta question">
           <button class="primary" type="submit">Envoyer</button>
         </form>
+        <div class="chips" id="chips"></div>
+        <div class="chat" id="chat" aria-live="polite"></div>
       </article>
+      <div id="coachSemaine"></div>
       <article class="panel" id="outilCoh">
         <div class="carte-tete"><h3>Respirer 5 min</h3><span class="note">cohérence cardiaque</span></div>
         <div class="breathe">
