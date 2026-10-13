@@ -351,9 +351,10 @@ function demarrer() {
   // passé minuit, « aujourd'hui » change : on redessine en revenant sur l'app
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') rendre(); });
 
+  // On ouvre toujours sur Aujourd'hui : l'adresse garde le dernier onglet (#reglages…), Bluefy la rouvrirait telle quelle
   const brut = lireHash(location.hash);
   if (brut != null) importer(brut);
-  montrerVue(brut != null ? 'jour' : location.hash.slice(1));
+  montrerVue('jour');
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 }

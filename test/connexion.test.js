@@ -32,7 +32,8 @@ function fauxBracelet({ muetSur = [] } = {}) {
     }
     if (p[0] === 0x39 || p[0] === 0x37) { v1(p16(p[0], 0, 5)); for (let n = 1; n <= 4; n++) v1(p16(p[0], n, n === 1 ? 0 : 50, 50)); }
     if (p[0] === 0xbc && p[1] === 0x27) {
-      const jour = [0, 4 + 2 * 3, 1380 & 0xff, 1380 >> 8, 400 & 0xff, 400 >> 8, 2, 200, 3, 120, 4, 120];
+      // nuit de la veille (1 jour avant) : toujours passée, quelle que soit l'heure du test
+      const jour = [1, 4 + 2 * 3, 1380 & 0xff, 1380 >> 8, 400 & 0xff, 400 >> 8, 2, 200, 3, 120, 4, 120];
       const donnees = [1, ...jour], o = [0xbc, 0x27, donnees.length, 0, 0, 0, ...donnees];
       for (let i = 0; i < o.length; i += 20) emettre(V2_NOTIF, o.slice(i, i + 20));   // MTU de 20 octets
     }

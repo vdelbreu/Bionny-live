@@ -179,7 +179,7 @@ async function chercher(tous = false) {
     appareil = await B.choisir(toutMontrer);
   } catch (e) {
     B.info(`liste fermée : ${e.name}`);
-    if (e.name === 'SecurityError' || e.name === 'NotAllowedError') { O.aller('reglages'); return false; }
+    // liste fermée sans choisir (Bluefy renvoie parfois NotAllowedError) : on reste sur Aujourd'hui, l'aide s'affiche
     $('#aideConnexion').hidden = false;
     return false;
   }
