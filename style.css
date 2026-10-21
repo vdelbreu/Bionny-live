@@ -432,3 +432,7 @@ label.bouton{cursor:pointer}
 .bulle details p{margin:0}
 .bulle details p+p{margin-top:6px}
 .etapes ol{margin:6px 0 0;padding-left:18px;display:grid;gap:4px}
+.sieste-proposee{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-radius:10px;
+  background:color-mix(in srgb,var(--moyen) 12%,var(--panel));border:1px solid color-mix(in srgb,var(--moyen) 40%,var(--line));font-size:14.5px}
+.form-sieste{display:grid;gap:10px}
+.form-sieste[open]{padding-bottom:4px}

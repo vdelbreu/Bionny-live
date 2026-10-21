@@ -54,6 +54,8 @@ Commandes (lecture seule plus mesure en direct ; jamais d'écriture de l'heure n
 - `js/app.js` : stockage (`nettoyer`), réglages (dont `reveil`), navigation, imports, sport déclaré, sauvegarde
 - `js/coach.js` (pur), `js/vues/coach.js` (conversation), `js/vues/jour.js`, `js/vues/donnees.js`, `js/ui.js`
 - `js/live.js` : direct, synchro, démo, cohérence ; `js/connexion.js` (Web Bluetooth, journal) ; `js/bracelet.js` (protocole, pur)
+- Réveil : `nuits()` retient ton heure corrigée (`D.reveils[cle]`, fiche Sommeil), sinon `reveilAuPouls` (2 relevés de suite ≥ pouls médian de la nuit + 12, sans retour sous + 6, dans la dernière heure), sinon le bracelet ; `finBracelet`, `finSource`, `finProvisoire` (nuit arrêtée à une synchro, `D.synchros`). Les pas ne sont qu'horaires : trop grossiers pour dater un réveil.
+- Siestes : le bracelet n'en enregistre pas (une période de sommeil par jour). `siestesFaites` = déclarées ou confirmées (`D.siestes`) + périodes courtes du bracelet ; `siestesProbables` = creux de pouls ≥ 20 min au niveau des nuits avec ≤ 150 pas/h (heure absente = 0), à confirmer (Oui → `D.siestes`, Non → `D.nonSiestes`), jamais comptées seules. Les siestes des 7 derniers jours réduisent la dette de `planSommeil`. Une sieste déclarée remplace celles qu'elle chevauche.
 - Apple Santé : un site ne peut pas écrire dans Santé. « Envoyer mon pouls vers Santé » (Réglages, fiche Cœur) copie les mesures de pouls pas encore envoyées (`R.santeJusqua`, 24 h au plus, une par quart d'heure + la dernière), une ligne `jj/mm/aaaa hh:mm;bpm` chacune, puis ouvre `shortcuts://run-shortcut?name=ViaWrist Santé`. Le raccourci (créé à la main, étapes dans Réglages) lit le presse-papiers et enregistre chaque ligne ; « Mon pouls » lit le dernier échantillon pour un widget. Non testé sur iPhone (presse-papiers et ouverture de Raccourcis depuis Bluefy).
 - Connexion : une recherche (`requestDevice`) ne voit pas un bracelet que l'iPhone tient déjà (il n'émet plus). Ordre : bracelet déjà connecté dans la page (`S.appareilOk`, connexion directe) ; à l'ouverture, une tentative discrète sur `getDevices` (+ `watchAdvertisements`), mise en pause une semaine après 2 échecs sans réussite (`localStorage viawrist-reconnexion`) car Bluefy retrouve l'appareil sans savoir s'y reconnecter ; sinon la liste. Sur écran tactile, la liste montre tous les appareils : le filtre de Bluefy cache le bracelet. Quitter l'app (`visibilitychange`, `pagehide`) libère le bracelet, sauf pendant une synchro. Si l'app Bionny est associée, iOS reprend le bracelet en permanence : il faut couper son Bluetooth (Réglages → Apps → Bionny) et « Oublier » le bracelet. Étapes notées dans le journal (`info`).
 - `js/graphes.js`, `js/exemple.js`, `sw.js`
@@ -62,7 +64,8 @@ Stockage : `localStorage` `bionny-reglages` et `bionny-sante` (noms gardés pour
 
 ## Tester
 
-- `npm test` : 45 tests (dont `coach.test.js`) (sante, coeur, bracelet, stats, et `connexion.test.js` avec un faux bracelet)
+- `npm test` : 55 tests (sante, coeur, bracelet, stats, coach, et `connexion.test.js` avec un faux bracelet)
+- `npm run test:navigateur` (site servi sur le port 8765) : scénarios dans un Chrome sans fenêtre, profil jetable (`test/navigateur/` : parcours, connexion avec faux Web Bluetooth, ouverture, Santé, sommeil). `CAPTURES=dossier` pour des images.
 - `python -m http.server 8765`, puis `outils/apercu.html#donnees/coeur` (données d'exemple, refuse d'écraser de vraies données) ou `outils/mobile.html#bilan` (cadre 390 px pour les captures headless)
 - Debug BLE : `chrome://bluetooth-internals` sur PC (couper le Bluetooth de l'iPhone pour libérer le bracelet)
 

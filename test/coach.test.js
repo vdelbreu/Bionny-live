@@ -129,3 +129,13 @@ test('phraseCoeur : explication selon le cas', () => {
   assert.match(phraseCoeur(46, r), /Plus basse/);
   assert.match(phraseCoeur(50, null), /dès 5 nuits/);
 });
+
+test('planSommeil : les siestes de la semaine réduisent la dette', () => {
+  const c = contexte();                                   // 7 nuits de 7 h : 7 h de dette
+  const avant = planSommeil(c).dette;
+  c.D.siestes = [{ debut: jour(13, 14), fin: jour(13, 15), source: 'declaree' }, { debut: jour(12, 14), fin: jour(12, 14, 30), source: 'confirmee' }];
+  const p = planSommeil(c);
+  assert.equal(avant - p.dette, 90 * MIN);
+  assert.equal(p.siestes, 90 * MIN);
+  assert.match(repondre('coucher', c).lignes[1], /\(\+ 1 h 30 de siestes\)/);
+});

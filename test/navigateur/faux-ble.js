@@ -1,0 +1,36 @@
+// Faux Web Bluetooth injecté avant la page : un bracelet qui répond à la batterie et au direct, une autorisation
+// retenue entre deux chargements (sessionStorage), et une visibilité de page pilotable (window.__ble.vis).
+(() => {
+  const etat = window.__ble = { requestDevice: 0, getDevices: 0, connexions: 0, deconnexions: 0, injoignable: false, vis: 'visible' };
+  Object.defineProperty(Document.prototype, 'visibilityState', { get: () => etat.vis, configurable: true });
+  Object.defineProperty(Document.prototype, 'hidden', { get: () => etat.vis !== 'visible', configurable: true });
+  if (!localStorage.getItem('bionny-sante')) localStorage.setItem('bionny-sante', JSON.stringify({ v: 1, maj: Date.now(), majBracelet: Date.now() }));
+  const p16 = (...o) => { const p = new Uint8Array(16); p.set(o); return p; };
+  const ecoutes = [];
+  const emettre = o => setTimeout(() => { for (const f of ecoutes) f({ target: { value: new DataView(Uint8Array.from(o).buffer) } }); }, 5);
+  const repondre = p => {
+    if (p[0] === 0x03) emettre(p16(0x03, 81, 0));
+    if (p[0] === 0x69 && p[2] === 1) emettre(p16(0x69, 1, 0, 64));
+  };
+  const carac = () => ({ properties: { write: true }, addEventListener: (_, f) => ecoutes.push(f), startNotifications: async () => {},
+    writeValueWithResponse: async p => repondre(p), writeValueWithoutResponse: async p => repondre(p) });
+  const introuvable = () => Object.assign(new Error('introuvable'), { name: 'NotFoundError' });
+  const appareil = new EventTarget();
+  appareil.name = 'Bionny 4.0'; appareil.id = 'faux';
+  appareil.gatt = {
+    connected: false,
+    async connect() {
+      if (etat.injoignable) { await new Promise(r => setTimeout(r, 300)); throw Object.assign(new Error('injoignable'), { name: 'NetworkError' }); }
+      ecoutes.length = 0; this.connected = true; etat.connexions++;
+      return { getPrimaryService: async uuid => {
+        if (['heart_rate', 'battery_service', 'device_information'].includes(uuid)) throw introuvable();
+        return { getCharacteristic: async () => carac() };
+      } };
+    },
+    disconnect() { if (!this.connected) return; this.connected = false; etat.deconnexions++; appareil.dispatchEvent(new Event('gattserverdisconnected')); },
+  };
+  Object.defineProperty(navigator, 'bluetooth', { configurable: true, value: {
+    requestDevice: async options => { etat.requestDevice++; etat.toutMontrer = !!options?.acceptAllDevices; sessionStorage.setItem('faux-autorise', '1'); return appareil; },
+    getDevices: async () => { etat.getDevices++; return sessionStorage.getItem('faux-autorise') ? [appareil] : []; },
+  } });
+})();

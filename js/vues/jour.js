@@ -1,7 +1,7 @@
 // Onglet Aujourd'hui, sous le direct : ta forme, puis des tuiles de chiffres (sommeil, coucher, pas, effort, cœur,
 // oxygène). Un chiffre et deux mots par tuile ; toucher une tuile ouvre sa fiche : l'explication, le conseil et
 // l'action (heure de lever, sport déclaré). Le texte n'est que dans les fiches.
-import { duree, cleJour, debutJour, JOUR } from '../sante.js';
+import { duree, cleJour, debutJour, siestesFaites, siestesProbables, JOUR } from '../sante.js';
 import { esc, hm } from '../graphes.js';
 import { repere, decalerJour } from '../stats.js';
 import {
@@ -74,10 +74,16 @@ function tuileForme(c) {
   </button>`;
 }
 
+// Siestes du jour (faites) et siestes probables à confirmer, sur les 2 derniers jours
+const siestesDuJour = c => siestesFaites(c.D).filter(x => cleJour(x.fin) === cleJour(c.maintenant));
+const aConfirmer = c => (c.D.exemple ? [] : siestesProbables(c.D, c.ns, c.maintenant));
+
 function tuileSommeil(c) {
   const n = derniereNuit(c), plan = planSommeil(c), e = etatSommeil(n, plan);
-  return tuile({ id: 'sommeil', label: 'Sommeil', valeur: n ? duree(n.tst) : '–', niveau: e.niveau,
-    barre: n ? barreProgression(n.tst, c.R.objectif * 60e3) : '', sous: n ? `cette nuit · ${e.court}` : 'pas de nuit' });
+  const sieste = siestesDuJour(c).reduce((a, x) => a + x.fin - x.debut, 0), proposees = aConfirmer(c).length;
+  const sous = proposees ? 'sieste à confirmer ?' : !n ? 'pas de nuit' : sieste ? `cette nuit · + ${duree(sieste)} de sieste` : `cette nuit · ${e.court}`;
+  return tuile({ id: 'sommeil', label: 'Sommeil', valeur: n ? duree(n.tst) : '–', niveau: proposees ? 'moyen' : e.niveau,
+    barre: n ? barreProgression(n.tst, c.R.objectif * 60e3) : '', sous });
 }
 
 function tuileCoucher(c) {
@@ -122,13 +128,24 @@ const FICHES = {
 
   sommeil(c) {
     const n = derniereNuit(c), plan = planSommeil(c), s = semaine(c);
+    const recentes = siestesFaites(c.D).filter(x => x.fin > c.maintenant - 36 * 3600e3);
     return { titre: 'Sommeil', corps: `<p class="fiche-cle">${esc(phraseSommeil(n, plan))}</p>
       <div class="tuiles">
         ${n ? `<div><span>Cette nuit</span><strong>${duree(n.tst)}</strong><em>${heure(minutes(n.debut))} → ${heure(minutes(n.fin))}</em></div>` : ''}
         ${n?.aDesStades ? `<div><span>Profond</span><strong>${duree(n.stades.deep)}</strong><em>répare le corps</em></div>` : ''}
         ${s.nuits ? `<div><span>Moyenne</span><strong>${duree(s.tst)}</strong><em>${s.nuits} nuit${s.nuits > 1 ? 's' : ''}</em></div>` : ''}
         <div><span>Objectif</span><strong>${duree(c.R.objectif * 60e3)}</strong><em>dans Réglages</em></div>
-      </div>${voirDetail('sommeil')}` };
+      </div>
+      ${n ? reveilNuit(n) : ''}
+      ${aConfirmer(c).map(p => `<div class="sieste-proposee"><span>Sieste de <b>${heure(minutes(p.debut))}</b> à <b>${heure(minutes(p.fin))}</b> ?</span>
+        <span class="actions"><button class="petit primary" data-action="sieste-oui" data-debut="${p.debut}" data-fin="${p.fin}">Oui</button><button class="petit" data-action="sieste-non" data-debut="${p.debut}">Non</button></span></div>`).join('')}
+      ${recentes.length ? `<ul class="liste">${recentes.map(x => `<li><span>Sieste ${heure(minutes(x.debut))} → ${heure(minutes(x.fin))}</span><b>${duree(x.fin - x.debut)}</b>${x.source === 'bracelet' ? '' : `<button class="lien" data-supprimer-sieste="${x.debut}">Supprimer</button>`}</li>`).join('')}</ul>` : ''}
+      <details class="form-sieste" id="formSieste"><summary>J'ai fait une sieste</summary>
+        <div class="segment">${[[20, '20 min'], [30, '30 min'], [45, '45 min'], [60, '1 h'], [90, '1 h 30']].map(([m, l], i) => `<button class="petit" data-duree="${m}" aria-pressed="${i === 1}">${l}</button>`).join('')}</div>
+        <label class="lever">Réveillé de la sieste à <input type="time" id="siesteFin" value="${hhmm(minutes(c.maintenant))}"></label>
+        <div class="actions"><button class="primary petit" data-action="sieste-ok">Ajouter</button></div>
+      </details>
+      ${voirDetail('sommeil')}` };
   },
 
   coucher(c) {
@@ -137,7 +154,7 @@ const FICHES = {
       <p class="note">Retenu pour tous les ${m.nom}s.</p>`;
     if (p.coucher == null) return { titre: 'Au lit ce soir', corps: `<p class="fiche-cle">Dis-moi à quelle heure tu te lèves.</p>${champ}` };
     return { titre: p.tard ? 'Il est l\'heure' : `Au lit vers ${heure(p.coucher)}`, corps: `
-      <p class="fiche-cle">${p.tard ? `Tu peux encore dormir <b>${duree(p.possible)}</b> avant ton lever à ${heure(p.lever)}.` : md(phraseBesoin(p, c.R.objectif * 60e3))}</p>
+      <p class="fiche-cle">${p.tard ? `Tu peux encore dormir <b>environ ${duree(Math.floor(p.possible / 3e5) * 3e5)}</b> avant ton lever à ${heure(p.lever)}, les 15 min pour t'endormir déjà comptées.` : md(phraseBesoin(p, c.R.objectif * 60e3))}</p>
       ${phraseAvance(p) ? `<p class="explication">${esc(phraseAvance(p))}</p>` : ''}
       ${champ}
       <details><summary>Comment je calcule</summary><p class="explication">Ton objectif, plus un quart de ton retard des 7 dernières nuits (1 h au plus), puis 15 min pour t'endormir. Les spécialistes conseillent 7 à 9 h entre 18 et 25 ans, et de rattraper en se couchant plus tôt.</p></details>` };
@@ -180,6 +197,15 @@ const FICHES = {
   },
 };
 const minutes = t => { const d = new Date(t); return d.getHours() * 60 + d.getMinutes(); };
+
+// Heure de réveil : corrigeable, avec d'où elle vient (bracelet, ton pouls, toi)
+function reveilNuit(n) {
+  const note = n.finSource === 'toi' ? `Corrigé par toi, le bracelet disait ${heure(minutes(n.finBracelet))}. <button class="lien" data-action="reveil-retablir" data-nuit="${n.cle}">Rétablir</button>`
+    : n.finSource === 'pouls' ? `Corrigé : ton pouls est remonté à ${heure(minutes(n.fin))}, le bracelet disait ${heure(minutes(n.finBracelet))}.`
+    : n.finProvisoire ? 'Le bracelet a arrêté ta nuit au moment de la synchro : corrige si tu étais réveillé avant.' : '';
+  return `<label class="lever">Réveillé à <input type="time" id="reveilNuit" data-nuit="${n.cle}" value="${hhmm(minutes(n.fin))}"></label>
+    ${note ? `<p class="note">${note}</p>` : ''}`;
+}
 
 function remplirFiche(id) {
   const f = FICHES[id]?.(contexte);

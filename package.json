@@ -5,6 +5,7 @@
   "description": "ViaWrist : sommeil, cœur, activité et récupération lus dans le bracelet Bionny 4.0 (iPhone, gratuit).",
   "scripts": {
     "test": "node --test \"test/*.test.js\"",
+    "test:navigateur": "bash test/navigateur/lancer.sh",
     "serve": "npx --yes serve ."
   }
 }

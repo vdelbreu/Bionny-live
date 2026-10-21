@@ -1,7 +1,7 @@
 // Coach : transforme tes données en conseils courts et concrets. Aucune invention : chaque phrase s'appuie sur une
 // mesure du bracelet ou une règle reconnue (OMS : 150 min d'effort par semaine ; ACSM : effort modéré dès 64 % de la
 // FC max, intense dès 77 %), et dit quand les données manquent. Pur, testé dans test/coach.test.js.
-import { duree, cleJour, debutJour, moyenne, ecartType, recuperation, norm, MIN, JOUR } from './sante.js';
+import { duree, cleJour, debutJour, moyenne, ecartType, recuperation, norm, siestesFaites, MIN, JOUR } from './sante.js';
 import { repere, joursPasses, decalerJour, comparerSemaines } from './stats.js';
 
 export const OBJECTIF_EFFORT = 150;     // minutes par semaine (OMS)
@@ -39,7 +39,9 @@ const vers18h = m => ((m - 18 * 60) % 1440 + 1440) % 1440;   // minutes depuis 1
 export function planSommeil(c) {
   const obj = c.R.objectif * MIN, nuits = nuits7(c);
   const moy = nuits.length ? moyenne(nuits.map(n => n.tst)) : null;
-  const dette = Math.max(0, nuits.reduce((a, n) => a + obj - n.tst, 0));
+  // les siestes de la semaine réduisent la dette : le corps compte tout le sommeil des 24 h
+  const siestes = siestesFaites(c.D || {}).filter(x => x.fin > c.maintenant - 7 * JOUR && x.fin <= c.maintenant).reduce((a, x) => a + x.fin - x.debut, 0);
+  const dette = Math.max(0, nuits.reduce((a, n) => a + obj - n.tst, 0) - siestes);
   const rattrapage = Math.min(RATTRAPAGE_MAX, Math.round(dette / MIN / 4 / 5) * 5) * MIN;
   const besoin = obj + rattrapage;
   const eveil = nuits.length ? Math.min(45, Math.max(0, Math.round(mediane(nuits.map(n => (n.fin - n.debut - n.tst) / MIN))))) : 0;
@@ -48,7 +50,7 @@ export function planSommeil(c) {
   const habituel = levers.length ? Math.round(mediane(levers) / 5) * 5 : null;
   const regle = c.R.leverJours?.[matin.jour] ?? c.R.reveil ?? null;
   const lever = regle ? minutesHHMM(regle) : habituel;
-  const base = { besoin, dette, rattrapage, moyenne: moy, eveil, lever, habituel, matin, nuits: nuits.length, source: regle ? 'reglage' : 'habitude' };
+  const base = { besoin, dette, rattrapage, moyenne: moy, siestes, eveil, lever, habituel, matin, nuits: nuits.length, source: regle ? 'reglage' : 'habitude' };
   if (lever == null) return { ...base, coucher: null, avance: 0, tard: false, possible: null };
   const coucher = Math.round((lever - besoin / MIN - eveil - LATENCE) / 5) * 5;
   // avance sur ton endormissement habituel : au-delà d'1 h, le corps n'a pas encore sommeil, il faut l'y aider
@@ -198,8 +200,8 @@ const NIVEAU = { ok: 'bonne', moyen: 'moyenne', bas: 'faible' };
 const phraseCoucher = p => p.tard ? `**au lit maintenant** (encore ${duree(p.possible)} de sommeil possible)` : `**au lit vers ${heure(p.coucher)}**`;
 // Plus ou moins que ton objectif, et pourquoi : moyenne et dette de tes dernières nuits
 export const phraseBesoin = (p, objectif) => p.moyenne == null ? `Vise **${duree(p.besoin)}** de sommeil, ton objectif.`
-  : p.rattrapage ? `Vise **${duree(p.besoin)}**, plus que tes ${duree(objectif)} : tes ${p.nuits} dernières nuits font ${duree(p.moyenne)} en moyenne, il te manque ${duree(p.dette)}.`
-  : `**${duree(p.besoin)}** suffisent : tes ${p.nuits} dernières nuits font ${duree(p.moyenne)} en moyenne, tu es à jour.`;
+  : p.rattrapage ? `Vise **${duree(p.besoin)}**, plus que tes ${duree(objectif)} : tes ${p.nuits} dernières nuits font ${duree(p.moyenne)} en moyenne${p.siestes ? ` (+ ${duree(p.siestes)} de siestes)` : ''}, il te manque ${duree(p.dette)}.`
+  : `**${duree(p.besoin)}** suffisent : tes ${p.nuits} dernières nuits font ${duree(p.moyenne)} en moyenne${p.siestes ? ` (+ ${duree(p.siestes)} de siestes)` : ''}, tu es à jour.`;
 export const phraseAvance = p => p.avance >= 60 && !p.tard
   ? "C'est bien plus tôt que d'habitude : coupe les écrans et tamise la lumière 1 h avant, ça aide à s'endormir." : '';
 const signeBpm = d => Math.abs(d) < 1 ? 'stable' : `${d > 0 ? '+' : ''}${Math.round(d)} bpm sur une semaine`;
@@ -232,7 +234,7 @@ const REPONSES = {
     if (!s.nuits) return ['Aucune nuit ces 7 derniers jours : garde le bracelet la nuit et synchronise le matin.'];
     return [
       n ? `Cette nuit : **${duree(n.tst)}**, ${etatSommeil(n, planSommeil(c)).court}.` : `Sur ${s.nuits} nuits : **${duree(s.tst)}** en moyenne.`,
-      n ? `Sur ${s.nuits} nuit${s.nuits > 1 ? 's' : ''} : ${duree(s.tst)} en moyenne, endormi vers ${heure(s.coucher)}.` : '',
+      n ? `Sur ${s.nuits} nuit${s.nuits > 1 ? 's' : ''} : ${duree(s.tst)} en moyenne, endormi vers ${heure(s.coucher)}${planSommeil(c).siestes ? `, plus ${duree(planSommeil(c).siestes)} de siestes` : ''}.` : '',
       s.tst < obj - 30 * MIN ? 'Tu dors moins que ton objectif : avance ton coucher de 30 min.'
         : s.regularite > 45 ? `Tes horaires bougent beaucoup (± ${Math.round(s.regularite)} min) : vise la même heure chaque soir.` : 'Bon rythme, continue comme ça.',
     ];

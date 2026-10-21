@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseDate, parseNum, stade, parseImport, lireHash, fusionner, vide, union, soustraire, total,
-  analyseNuit, nuits, recuperation, resume, MIN, H, JOUR,
+  analyseNuit, nuits, recuperation, resume, reveilAuPouls, siestesFaites, siestesProbables, MIN, H, JOUR,
 } from '../js/sante.js';
 import { texteExemple } from '../js/exemple.js';
 
@@ -167,4 +167,81 @@ test('les données d\'exemple passent sans avertissement et donnent un verdict',
   const s = resume(ns, 480, now);
   assert.equal(s.n, 7);
   assert.ok(s.regCoucher < 40);
+});
+
+/* ---------- Réveil corrigé et siestes ---------- */
+
+// nuit de 0 h à 8 h 10 (le bracelet s'arrête à la synchro de 8 h 10), pouls de 54 la nuit
+function nuitReveil({ pouls = [], synchro = null, reveils = {} } = {}) {
+  const t0 = new Date(2026, 9, 21, 0, 0).getTime(), fin = t0 + 8 * H + 10 * MIN;
+  const fc = [];
+  for (let t = t0; t < fin; t += 5 * MIN) fc.push({ t, v: 54 });
+  for (const [hhmm, v] of pouls) { const [h, m] = hhmm.split(':').map(Number); const t = t0 + h * H + m * MIN; const x = fc.find(y => y.t === t); if (x) x.v = v; }
+  return { ...vide(), sommeil: [{ s: t0, e: fin, k: 'core' }], fc, synchros: synchro ? [synchro] : [], reveils };
+}
+
+test('réveil au pouls : une hausse qui dure avance le réveil, un pic isolé non', () => {
+  const d = nuitReveil({ pouls: [['08:00', 75], ['08:05', 72]] });
+  const n = nuits(d)[0];
+  assert.equal(n.finSource, 'pouls');
+  assert.equal(new Date(n.fin).getHours() * 60 + new Date(n.fin).getMinutes(), 8 * 60);
+  assert.equal(new Date(n.finBracelet).getMinutes(), 10);
+  assert.equal(n.tst, 8 * H);
+  const pic = nuits(nuitReveil({ pouls: [['07:30', 85], ['07:35', 55]] }))[0];
+  assert.equal(pic.finSource, 'bracelet');                       // micro-réveil : rien ne change
+  assert.equal(reveilAuPouls(pic, []), null);
+});
+
+test('réveil corrigé par toi : il passe avant le pouls, et peut aussi prolonger la nuit', () => {
+  const t = new Date(2026, 9, 21, 7, 45).getTime();
+  const n = nuits(nuitReveil({ pouls: [['08:00', 75], ['08:05', 72]], reveils: { '2026-10-21': t } }))[0];
+  assert.equal(n.finSource, 'toi');
+  assert.equal(n.fin, t);
+  assert.equal(n.tst, 7 * H + 45 * MIN);
+  const plus = nuits(nuitReveil({ reveils: { '2026-10-21': new Date(2026, 9, 21, 8, 30).getTime() } }))[0];
+  assert.equal(plus.tst, 8 * H + 30 * MIN);
+  const absurde = nuits(nuitReveil({ reveils: { '2026-10-21': new Date(2026, 9, 21, 0, 20).getTime() } }))[0];
+  assert.equal(absurde.finSource, 'bracelet');                   // moins d'1 h après l'endormissement : ignoré
+});
+
+test('nuit arrêtée par une synchro : signalée comme provisoire', () => {
+  const synchro = new Date(2026, 9, 21, 8, 14).getTime();
+  assert.equal(nuits(nuitReveil({ synchro }))[0].finProvisoire, true);
+  assert.equal(nuits(nuitReveil({ synchro: synchro + 2 * H }))[0].finProvisoire, false);
+});
+
+// journée du 21 : pouls de 75, sauf un creux à 55 de 14 h à 14 h 40 ; pas par heure
+function journee({ pasA14 = 0, refus = [] } = {}) {
+  const d = nuitReveil();
+  const j = new Date(2026, 9, 21, 9, 0).getTime();
+  for (let t = j; t < j + 10 * H; t += 5 * MIN) {
+    const h = new Date(t).getHours() + new Date(t).getMinutes() / 60;
+    d.fc.push({ t, v: h >= 14 && h < 14 + 40 / 60 ? 55 : 75 });
+  }
+  d.activite = [{ t: new Date(2026, 9, 21, 12).getTime(), v: 800, dist: 0, cal: 0 }];
+  if (pasA14) d.activite.push({ t: new Date(2026, 9, 21, 14).getTime(), v: pasA14, dist: 0, cal: 0 });
+  d.nonSiestes = refus;
+  return d;
+}
+
+test('siestes probables : un creux de pouls sans pas est proposé, à confirmer', () => {
+  const d = journee(), soir = new Date(2026, 9, 21, 20).getTime();
+  const p = siestesProbables(d, nuits(d), soir);
+  assert.equal(p.length, 1);
+  assert.equal(new Date(p[0].debut).getHours(), 14);
+  assert.equal(p[0].fin - p[0].debut, 40 * MIN);
+  assert.equal(siestesFaites(d).length, 0);                      // proposée seulement : ne compte pas
+  assert.equal(siestesProbables(journee({ pasA14: 900 }), nuits(d), soir).length, 0);   // tu marchais
+  assert.equal(siestesProbables(journee({ refus: [p[0].debut] }), nuits(d), soir).length, 0);   // tu as dit non
+  d.siestes = [{ debut: p[0].debut, fin: p[0].fin, source: 'confirmee' }];
+  assert.equal(siestesProbables(d, nuits(d), soir).length, 0);   // confirmée : plus proposée
+  assert.equal(siestesFaites(d).length, 1);
+});
+
+test('siestes : une courte période de sommeil du bracelet en journée en est une, pas une nuit', () => {
+  const d = nuitReveil();
+  const s = new Date(2026, 9, 21, 15, 0).getTime();
+  d.sommeil.push({ s, e: s + 40 * MIN, k: 'core' });
+  assert.equal(nuits(d).length, 1);
+  assert.deepEqual(siestesFaites(d).map(x => [x.source, x.fin - x.debut]), [['bracelet', 40 * MIN]]);
 });

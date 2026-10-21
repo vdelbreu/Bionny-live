@@ -39,6 +39,12 @@ function nettoyer(d) {
     moy: num(x.moy) ?? 0, max: num(x.max) ?? 0,
     effort: { moderes: num(x.effort?.moderes) ?? 0, intenses: num(x.effort?.intenses) ?? 0 },
   }));
+  const SOURCES = new Set(['declaree', 'confirmee']);
+  out.siestes = (d.siestes || []).filter(x => num(x?.debut) != null && num(x?.fin) != null && x.fin > x.debut && x.fin - x.debut <= 6 * 3600e3)
+    .map(x => ({ debut: x.debut, fin: x.fin, source: SOURCES.has(x.source) ? x.source : 'declaree' }));
+  out.nonSiestes = (d.nonSiestes || []).filter(t => num(t) != null).slice(-100);
+  out.reveils = Object.fromEntries(Object.entries(d.reveils || {}).filter(([k, t]) => /^\d{4}-\d{2}-\d{2}$/.test(k) && num(t) != null));
+  out.synchros = (d.synchros || []).filter(t => num(t) != null).slice(-60);
   out.maj = num(d.maj);
   out.majBracelet = num(d.majBracelet);
   out.origine = ['sante', 'bracelet'].includes(d.origine) ? d.origine : undefined;
@@ -122,6 +128,7 @@ function importerBracelet(imp) {
   D = fusionner(D.exemple ? vide() : D, imp, t, { parJour: true });
   D.origine = 'bracelet';
   D.majBracelet = t;
+  D.synchros = [...(D.synchros || []), t].slice(-60);   // pour repérer une nuit arrêtée par la synchro
   sauverDonnees();
   const nbNuits = calculerNuits({ ...vide(), sommeil: imp.sommeil }).length;
   toast(`Bracelet synchronisé : ${nbNuits} nuit${nbNuits > 1 ? 's' : ''} et ${nf(imp.fc.length)} mesures de pouls.`);
@@ -147,6 +154,29 @@ function ajouterSport() {
   sauverDonnees();
   toast(`Sport ajouté : ${duree(minutes * 60e3)}, ${intensite}.`);
   rendre();
+}
+// Siestes et réveil corrigé : ce que tu sais mieux que le bracelet
+function modifierSiestes(f, message) {
+  if (D.exemple) return toast("Données d'exemple : connecte ton bracelet d'abord.");
+  D.siestes ??= []; D.nonSiestes ??= []; D.reveils ??= {};
+  f();
+  sauverDonnees();
+  toast(message);
+  rendre();
+}
+function ajouterSieste() {
+  const f = $('#formSieste'), minutes = +(f.querySelector('[data-duree][aria-pressed="true"]')?.dataset.duree ?? 30);
+  const [h, m] = ($('#siesteFin').value || '').split(':').map(Number);
+  const fin = new Date(); fin.setHours(h, m, 0, 0);
+  if (!Number.isFinite(fin.getTime())) return toast("Indique l'heure de fin de la sieste.");
+  if (fin.getTime() > Date.now() + 5 * 60e3) fin.setDate(fin.getDate() - 1);   // une heure à venir : c'était hier
+  const debut = fin.getTime() - minutes * 60e3;
+  // une sieste qui en chevauche une autre est la même, que tu précises : elle la remplace (jamais comptée deux fois)
+  const avant = (D.siestes || []).filter(x => x.debut < fin.getTime() && x.fin > debut);
+  modifierSiestes(() => {
+    D.siestes = D.siestes.filter(x => !avant.includes(x));
+    D.siestes.push({ debut, fin: fin.getTime(), source: 'declaree' });
+  }, avant.length ? `Sieste de ${duree(minutes * 60e3)} : elle remplace celle de ${heure(new Date(avant[0].debut).getHours() * 60 + new Date(avant[0].debut).getMinutes())}.` : `Sieste de ${duree(minutes * 60e3)} ajoutée.`);
 }
 function supprimerSeance(debut) {
   if (!confirm('Supprimer cette séance ?')) return;
@@ -332,6 +362,12 @@ function demarrer() {
     if (action === 'connecter') connecterBracelet();
     if (action === 'chercher') chercherBracelet();
     if (action === 'sante') envoyerSante();
+    if (action === 'sieste-oui') modifierSiestes(() => { const b = e.target.closest('[data-action]'); D.siestes.push({ debut: +b.dataset.debut, fin: +b.dataset.fin, source: 'confirmee' }); }, 'Sieste comptée.');
+    if (action === 'sieste-non') modifierSiestes(() => { D.nonSiestes.push(+e.target.closest('[data-action]').dataset.debut); }, 'Compris, ce n\'était pas une sieste.');
+    if (action === 'sieste-ok') ajouterSieste();
+    if (action === 'reveil-retablir') modifierSiestes(() => { delete D.reveils[e.target.closest('[data-action]').dataset.nuit]; }, 'Heure du bracelet rétablie.');
+    const supprSieste = e.target.closest('[data-supprimer-sieste]');
+    if (supprSieste) modifierSiestes(() => { D.siestes = D.siestes.filter(x => x.debut !== +supprSieste.dataset.supprimerSieste); }, 'Sieste supprimée.');
     if (action === 'sport') {
       const f = $('#formSport'), b = e.target.closest('[data-action]');
       f.hidden = !f.hidden;
@@ -339,7 +375,7 @@ function demarrer() {
     }
     if (action === 'sport-ok') ajouterSport();
     // choix exclusif dans un groupe (durée, intensité)
-    const choix = e.target.closest('.form-sport [data-duree], .form-sport [data-intensite]');
+    const choix = e.target.closest('.form-sport [data-duree], .form-sport [data-intensite], .form-sieste [data-duree]');
     if (choix) choix.parentElement.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === choix));
     const suppr = e.target.closest('[data-supprimer]');
     if (suppr) supprimerSeance(+suppr.dataset.supprimer);
@@ -348,6 +384,14 @@ function demarrer() {
       const txt = $('#' + copier.dataset.copier).textContent;
       navigator.clipboard?.writeText(txt).then(() => toast('Copié.'), () => toast('Copie impossible : sélectionne le texte à la main.'));
     }
+  });
+  // heure de réveil d'une nuit, corrigée à la main dans la fiche Sommeil
+  document.addEventListener('change', e => {
+    if (e.target.id !== 'reveilNuit') return;
+    const cle = e.target.dataset.nuit, [h, m] = e.target.value.split(':').map(Number);
+    if (!HEURE.test(e.target.value)) return;
+    const [a, mo, j] = cle.split('-').map(Number);
+    modifierSiestes(() => { D.reveils[cle] = new Date(a, mo - 1, j, h, m).getTime(); }, `Réveil corrigé : ${e.target.value}.`);
   });
   // heure de lever par jour de la semaine : réglable dans Réglages et directement dans la carte Sommeil
   document.addEventListener('change', e => {
