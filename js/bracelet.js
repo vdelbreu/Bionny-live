@@ -181,3 +181,62 @@ export function lireSpo2(o, maintenant) {
 
 export class CollecteVfc extends CollecteDemiHeures { constructor(minuit) { super(0x39, minuit); } }
 export class CollecteStress extends CollecteDemiHeures { constructor(minuit) { super(0x37, minuit); } }
+
+/* ---------- Écrits dans le bracelet : heure, réveils, vibreur ---------- */
+// Formats lus dans Gadgetbridge (appareils Yawell / QRing, même protocole ; le bracelet H59 a 10 réveils nommés).
+// La demande de sommeil ci-dessus (bc 27 01 00 ff 00 ff) suit le même schéma, avec la même somme de contrôle.
+
+const versBcd = n => ((Math.floor(n / 10) % 10) << 4) | (n % 10);
+// Le bracelet vit à l'heure locale, comme ses données : chiffres en BCD, l'année sur 2 chiffres
+export const paquetHeure = t => { const d = new Date(t); return paquet(0x01, [versBcd(d.getFullYear() % 100), versBcd(d.getMonth() + 1), versBcd(d.getDate()), versBcd(d.getHours()), versBcd(d.getMinutes()), versBcd(d.getSeconds())]); };
+
+export function crc16Modbus(octets) {
+  let crc = 0xffff;
+  for (const b of octets) {
+    crc ^= b;
+    for (let i = 0; i < 8; i++) crc = crc & 1 ? (crc >>> 1) ^ 0xa001 : crc >>> 1;
+  }
+  return crc & 0xffff;
+}
+// Grande trame : [bc, type, longueur LE, crc16 Modbus LE, charge…], envoyée sur le canal v2
+export const paquetGros = (type, charge) => {
+  const n = charge.length, c = crc16Modbus(charge);
+  return Uint8Array.of(0xbc, type, n & 0xff, n >> 8, c & 0xff, c >> 8, ...charge);
+};
+
+// Un réveil : { minutes depuis minuit, jours (0 = dimanche … 6 = samedi ; vide = une seule fois), actif, nom }.
+// Le bracelet en garde 10, nom de 28 octets au plus. Pas de réglage de durée ni de force de vibration.
+export const REVEILS_MAX = 10, NOM_MAX = 28;
+const enUtf8 = s => [...new TextEncoder().encode(s)];
+function nomCourt(nom = '') {
+  let car = [...nom];
+  while (enUtf8(car.join('')).length > NOM_MAX) car = car.slice(0, -1);
+  return enUtf8(car.join(''));
+}
+function enregistrementReveil(r) {
+  const nom = nomCourt(r.nom);
+  const drapeaux = r.jours.reduce((a, j) => a | (1 << j), 0) | (r.actif ? 0x80 : 0);
+  return [4 + nom.length, drapeaux, r.minutes & 0xff, (r.minutes >> 8) & 0xff, ...nom];
+}
+export const demandesReglages = {
+  heure: t => paquetHeure(t),
+  vibrer: () => paquet(0x50, [0x55, 0xaa]),                 // « trouver l'appareil » : le bracelet vibre
+  reveils: () => paquetGros(0x2c, [0x01]),                   // lire la liste
+  ecrireReveils: liste => paquetGros(0x2c, [0x02, liste.length, ...liste.slice(0, REVEILS_MAX).flatMap(enregistrementReveil)]),
+};
+
+// Réponse à la lecture : [bc 2c, longueur, crc, 01, nombre, enregistrements…] ; null = simple accusé d'écriture
+export function lireReveils(o) {
+  if (o.length < 8 || o[0] !== 0xbc || o[1] !== 0x2c || (o[2] | (o[3] << 8)) < 2 || o[6] !== 0x01) return null;
+  const out = [];
+  let i = 8;
+  for (let k = 0; k < o[7] && i + 4 <= o.length; k++) {
+    const taille = o[i];
+    if (taille < 4) break;
+    const drapeaux = o[i + 1], minutes = o[i + 2] | (o[i + 3] << 8);
+    const nom = new TextDecoder().decode(Uint8Array.from(o.slice(i + 4, i + taille)));
+    out.push({ minutes, jours: [0, 1, 2, 3, 4, 5, 6].filter(j => drapeaux & (1 << j)), actif: !!(drapeaux & 0x80), nom });
+    i += taille;
+  }
+  return out;
+}

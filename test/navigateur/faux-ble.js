@@ -1,7 +1,13 @@
 // Faux Web Bluetooth injecté avant la page : un bracelet qui répond à la batterie et au direct, une autorisation
 // retenue entre deux chargements (sessionStorage), et une visibilité de page pilotable (window.__ble.vis).
 (() => {
-  const etat = window.__ble = { requestDevice: 0, getDevices: 0, connexions: 0, deconnexions: 0, injoignable: false, vis: 'visible' };
+  const etat = window.__ble = { requestDevice: 0, getDevices: 0, connexions: 0, deconnexions: 0, injoignable: false, vis: 'visible', ecrits: [] };
+  // réveils en mémoire (charge de la réponse à la lecture), gardés d'un chargement à l'autre ; au départ un réveil
+  // « Sport » à 18 h lundi et mercredi, comme réglé avec l'app Bionny
+  const SPORT = [0x01, 1, 9, 0x80 | (1 << 1) | (1 << 3), 1080 & 0xff, 1080 >> 8, ...new TextEncoder().encode('Sport')];
+  const lireReveils = () => JSON.parse(sessionStorage.getItem('faux-reveils') || JSON.stringify(SPORT));
+  const crc = o => { let c = 0xffff; for (const b of o) { c ^= b; for (let i = 0; i < 8; i++) c = c & 1 ? (c >>> 1) ^ 0xa001 : c >>> 1; } return c; };
+  const gros = (type, charge) => { const c = crc(charge); return [0xbc, type, charge.length & 0xff, charge.length >> 8, c & 0xff, c >> 8, ...charge]; };
   Object.defineProperty(Document.prototype, 'visibilityState', { get: () => etat.vis, configurable: true });
   Object.defineProperty(Document.prototype, 'hidden', { get: () => etat.vis !== 'visible', configurable: true });
   if (!localStorage.getItem('bionny-sante')) localStorage.setItem('bionny-sante', JSON.stringify({ v: 1, maj: Date.now(), majBracelet: Date.now() }));
@@ -9,6 +15,13 @@
   const ecoutes = [];
   const emettre = o => setTimeout(() => { for (const f of ecoutes) f({ target: { value: new DataView(Uint8Array.from(o).buffer) } }); }, 5);
   const repondre = p => {
+    etat.ecrits.push([...p.slice(0, 2)].map(b => b.toString(16).padStart(2, '0')).join(' '));
+    if (p[0] === 0xbc && p[1] === 0x2c) {
+      const charge = [...p.slice(6)];
+      if (charge[0] === 0x02) sessionStorage.setItem('faux-reveils', JSON.stringify([0x01, ...charge.slice(1)]));
+      const o = gros(0x2c, charge[0] === 0x02 ? [0x02] : lireReveils());
+      for (let i = 0; i < o.length; i += 20) emettre(o.slice(i, i + 20));
+    }
     if (p[0] === 0x03) emettre(p16(0x03, 81, 0));
     if (p[0] === 0x69 && p[2] === 1) emettre(p16(0x69, 1, 0, 64));
   };

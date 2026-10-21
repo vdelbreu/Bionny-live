@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Scénarios dans un vrai navigateur : chacun dans un Chrome sans fenêtre, avec un profil jetable supprimé ensuite.
 # Le site doit être servi en local : python -m http.server 8765 --bind 127.0.0.1 (à la racine du projet).
-# Usage : bash test/navigateur/lancer.sh [parcours connexion ouverture sante sommeil]   (CAPTURES=dossier pour des images)
+# Usage : bash test/navigateur/lancer.sh [parcours connexion ouverture sante sommeil reveils]   (CAPTURES=dossier pour des images)
 cd "$(dirname "$0")" || exit 1
 CHROME="${CHROME:-/c/Program Files/Google/Chrome/Application/chrome.exe}"
-SCENARIOS="${*:-parcours connexion ouverture sante sommeil}"
+SCENARIOS="${*:-parcours connexion ouverture sante sommeil reveils}"
 curl -s -o /dev/null http://127.0.0.1:8765/index.html || { echo "Site non servi sur le port 8765"; exit 1; }
 echec=0
 for s in $SCENARIOS; do

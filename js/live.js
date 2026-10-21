@@ -6,7 +6,7 @@ import * as B from './connexion.js';
 const $ = s => document.querySelector(s);
 const RESPI_MS = 11000;        // 5,5 s inspiration + 5,5 s expiration
 const PERDU_MS = 15000;        // sans valeur depuis 15 s = signal perdu
-const O = { fcMax: () => 194, toast: () => {}, importer: () => {}, jours: () => 7, activite: () => {}, aller: () => {}, dernierReleve: () => null, synchroUtile: () => true };
+const O = { fcMax: () => 194, toast: () => {}, importer: () => {}, jours: () => 7, activite: () => {}, aller: () => {}, dernierReleve: () => null, synchroUtile: () => true, apresConnexion: async () => {} };
 const ATTENTE_DIRECT_MS = 45000;   // sans valeur en direct après 45 s : on le dit, et on montre le dernier relevé
 
 const S = {
@@ -192,6 +192,8 @@ async function brancher(avecHistorique, delai = 0) {
   puce('Connecté · ' + (S.appareil.name || 'Bionny'), 'live');
   if (mode === 'colmi') {
     if (avecHistorique && O.synchroUtile()) await synchroniserHistorique();
+    // heure et réveils du bracelet : un échec ici ne doit jamais couper la connexion
+    try { await O.apresConnexion(); } catch (e) { B.info(`après connexion : ${e.message}`); }
     B.demarrerDirect();
   }
   carte(S.bpm == null ? 'mesure' : 'direct', S.bpm == null ? 'Mesure du pouls en cours…' : null);

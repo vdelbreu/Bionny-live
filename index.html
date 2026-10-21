@@ -132,7 +132,34 @@
           </div>
           <label class="field"><span>Pas</span><input id="objectifPas" type="number" inputmode="numeric" min="1000" max="40000" step="500"><span class="note">par jour</span></label>
         </div>
-        <p class="note">Ton heure de lever sert à calculer quand te coucher pour être en forme. L'alarme, elle, se règle dans l'app Horloge de l'iPhone : le bracelet ne permet pas de programmer un réveil depuis ViaWrist.</p>
+        <p class="note">Ton heure de lever sert à calculer quand te coucher, et au réveil vibreur du bracelet (Réveil et rappels, juste en dessous).</p>
+      </article>
+
+      <article class="panel" id="carteReveils">
+        <h3>Réveil et rappels</h3>
+        <p class="note fort" id="etatReveils"></p>
+        <label class="interrupteur"><input type="checkbox" id="vibReveil"><span>Réveil vibreur à mes heures de lever</span></label>
+        <p class="note" id="resumeLevers"></p>
+        <label class="interrupteur"><input type="checkbox" id="vibCoucher"><span>Rappel du coucher, 30 min avant l'heure conseillée</span></label>
+        <div class="rappels" id="listeRappels"></div>
+        <div class="actions">
+          <button class="petit" data-action="rappel-ajouter">Ajouter un rappel</button>
+          <button class="petit" data-action="vibrer">Tester le vibreur</button>
+        </div>
+        <p class="note">Enregistrés dans le bracelet : il vibre même téléphone éteint. La durée et la force de la vibration sont fixées par le bracelet. 10 au plus.</p>
+      </article>
+
+      <article class="panel">
+        <h3>Appels et messages</h3>
+        <label class="interrupteur"><input type="checkbox" id="vibNotifs"><span>Faire vibrer le bracelet pour les appels et messages</span></label>
+        <div id="aideNotifs" hidden>
+          <p class="explication">C'est l'iPhone qui envoie ses notifications au bracelet, pas ViaWrist. La vibration (courte pour un message, répétée pour un appel) est décidée par le bracelet.</p>
+          <ol class="etapes">
+            <li>Réglages de l'iPhone → Apps → Bionny → active Bluetooth, puis associe le bracelet dans l'app Bionny.</li>
+            <li>Réglages → Bluetooth → (i) à côté de « Bionny 4.0 » → active « Partager les notifications système ».</li>
+          </ol>
+          <p class="note"><b>Attention :</b> l'iPhone garde alors le bracelet pour lui. ViaWrist ne le retrouvera plus après fermeture de la page. Pour revenir en arrière : « Oublier cet appareil » et Bluetooth coupé pour l'app Bionny.</p>
+        </div>
       </article>
 
       <article class="panel">

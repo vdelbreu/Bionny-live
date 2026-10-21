@@ -392,8 +392,9 @@ label.bouton{cursor:pointer}
 .bandeau-info{margin:0;padding:10px 12px;border-radius:10px;font-size:13.5px;background:color-mix(in srgb,var(--moyen) 14%,var(--panel));border:1px solid color-mix(in srgb,var(--moyen) 45%,var(--line))}
 #dernierPouls{margin:0}
 
-.lever-jours{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px 14px;width:100%}
-.lever-jours label{display:grid;grid-template-columns:5.6em 1fr;align-items:center;gap:8px;font-size:14px;color:var(--ink-2)}
+.lever-jours{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px 18px;width:100%}
+.lever-jours label{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px;color:var(--ink-2)}
+.lever-jours input{width:130px;min-width:0}
 .action-soir em b{color:var(--ink)}
 
 /* ---------- Aujourd'hui : tuiles (un chiffre, deux mots) et fiches (le détail, au toucher) ---------- */
@@ -436,3 +437,15 @@ label.bouton{cursor:pointer}
   background:color-mix(in srgb,var(--moyen) 12%,var(--panel));border:1px solid color-mix(in srgb,var(--moyen) 40%,var(--line));font-size:14.5px}
 .form-sieste{display:grid;gap:10px}
 .form-sieste[open]{padding-bottom:4px}
+
+/* ---------- Réveil et rappels ---------- */
+.interrupteur{display:flex;align-items:center;gap:10px;font-size:14.5px;cursor:pointer}
+.interrupteur input{width:20px;height:20px;accent-color:var(--pulse);flex:none}
+.interrupteur.petit{font-size:13px;gap:6px}
+.rappels{display:grid;gap:10px}
+.rappel{display:grid;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.rappel-ligne{display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:space-between}
+.rappel input[type="text"]{flex:1;min-width:100px;font:inherit;font-size:16px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink)}
+.rappel input[type="time"]{font:inherit;font-size:16px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink)}
+.jours-semaine{display:flex;gap:4px}
+.jours-semaine button{min-width:34px;padding:6px 0;justify-content:center}

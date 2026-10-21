@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   paquet, secondesMurales, minuitLocal, demandes, lireDirect, lireBatterie,
   CollecteFc, CollecteActivite, CollecteVfc, CollecteGros, lireSommeil, lireSpo2,
+  crc16Modbus, paquetGros, paquetHeure, demandesReglages, lireReveils,
 } from '../js/bracelet.js';
 
 const MIN = 60e3;
@@ -113,4 +114,42 @@ test('oxygène : moyenne min/max par heure, heures vides ignorées', () => {
   bloc[1 + 3 * 2] = 94; bloc[2 + 3 * 2] = 98;           // 3 h
   const o = [0xbc, 0x2a, 49, 0, 0, 0, ...bloc];
   assert.deepEqual(lireSpo2(o, local(13, 9)), [{ t: local(12, 3), v: 96 }]);
+});
+
+/* ---------- Heure, réveils, vibreur ---------- */
+
+
+test('grande trame : même schéma et même somme de contrôle que la demande de sommeil', () => {
+  assert.equal(crc16Modbus([0xff]), 0x00ff);
+  assert.deepEqual([...paquetGros(0x27, [0xff])], [...demandes.sommeil()]);
+  assert.deepEqual([...demandesReglages.reveils()].slice(0, 4), [0xbc, 0x2c, 0x01, 0x00]);
+});
+
+test('heure : heure locale en BCD, somme de contrôle en dernier octet', () => {
+  const p = paquetHeure(new Date(2026, 9, 25, 3, 7, 59).getTime());
+  assert.deepEqual([...p.slice(0, 7)], [0x01, 0x26, 0x10, 0x25, 0x03, 0x07, 0x59]);
+  assert.equal(p[15], [...p.slice(0, 15)].reduce((a, b) => a + b, 0) & 0xff);
+});
+
+test('réveils : écriture puis relecture donnent la même liste', () => {
+  const liste = [
+    { minutes: 7 * 60 + 20, jours: [1, 2, 4], actif: true, nom: 'Reveil' },
+    { minutes: 22 * 60 + 35, jours: [], actif: false, nom: 'Médicament du soir, très important pour moi' },
+  ];
+  const p = [...demandesReglages.ecrireReveils(liste)];
+  assert.equal(p[6], 0x02);                                        // écriture
+  assert.equal(p[7], 2);
+  assert.equal(p[9], 0x80 | 0b10110);                              // actif + lundi, mardi, jeudi (0 = dimanche)
+  assert.deepEqual([p[10], p[11]], [(7 * 60 + 20) & 0xff, (7 * 60 + 20) >> 8]);
+  const lu = lireReveils([0xbc, 0x2c, 0, 0, 0, 0, 0x01, ...p.slice(7)].map((b, i) => (i === 2 ? (p.length - 6) & 0xff : b)));
+  assert.equal(lu.length, 2);
+  assert.deepEqual(lu[0], liste[0]);
+  assert.equal(lu[1].actif, false);
+  assert.ok(new TextEncoder().encode(lu[1].nom).length <= 28);   // nom coupé à 28 octets, sans casser un caractère
+  assert.ok(liste[1].nom.startsWith(lu[1].nom));
+  assert.equal(lireReveils([0xbc, 0x2c, 0x01, 0x00, 0, 0, 0x02]), null);   // accusé d'écriture
+});
+
+test('vibreur : commande « trouver l\'appareil »', () => {
+  assert.deepEqual([...demandesReglages.vibrer().slice(0, 3)], [0x50, 0x55, 0xaa]);
 });

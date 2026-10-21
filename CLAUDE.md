@@ -28,7 +28,7 @@ Le Bionny 4.0 expose `1800`, `1801`, `180A`, `FEE7`, `6e40fff0-…`, `de5bf728-�
 | Écriture V2 | `de5bf72a-…`, sans cadre ni somme |
 | Notifications V2 | `de5bf729-…`, `[0xbc, type, longueur LE, 2 octets, données]` en plusieurs notifications |
 
-Commandes (lecture seule plus mesure en direct ; jamais d'écriture de l'heure ni des réglages) :
+Commandes en lecture, plus la mesure en direct :
 - `0x03` batterie → `[1]` niveau, `[2]` en charge ; aussi notification `0x73 0x0c`.
 - `0x73 0x12` activité du jour en direct : pas `[2..4]`, distance `[8..10]` en big-endian 24 bits.
 - `0x69 [1,1]` FC en direct, `[1,3]` continuer (toutes les 10 s), `0x6a [1,0,0]` arrêter. Réponse `[2]` erreur (1 = mal porté, 2 = pas encore), `[3]` bpm. Pas de R-R.
@@ -37,6 +37,12 @@ Commandes (lecture seule plus mesure en direct ; jamais d'écriture de l'heure n
 - `0x39 [jours avant]` variabilité, `0x37 [0]` stress du jour : une valeur par demi-heure (12 puis 13 par paquet).
 - V2 `bc 27 01 00 ff 00 ff` sommeil : `[6]` nb de jours, puis `[jours avant, taille, début LE, fin LE, (stade, minutes)…]`, stades 2 léger, 3 profond, 4 paradoxal, 5 éveil.
 - V2 `bc 2a 01 00 ff 00 ff` oxygène : blocs de 49 octets `[jours avant, (min, max) × 24 h]`.
+
+Écritures (à la demande de l'utilisateur, formats du code Gadgetbridge `service/devices/yawell/ring/YawellRingDeviceSupport.java` et `devices/yawell/ring/YawellRingPacketHandler.java`, appareils Yawell/QRing du même protocole ; le bracelet H59 a 10 réveils nommés) :
+- `0x01 [aa mm jj hh mi ss]` en BCD, heure locale : mise à l'heure à chaque connexion (`mettreALHeure`), changement d'heure compris.
+- `0x50 [0x55, 0xaa]` « trouver l'appareil » : le bracelet vibre (bouton Tester le vibreur).
+- Grande trame `bc type longueur(LE) crc16-Modbus(LE) charge` (`paquetGros`, la demande de sommeil suit le même schéma) ; réveils type `0x2c` : lecture `[01]` → `[01, n, (taille, drapeaux, minutes LE, nom UTF-8 ≤ 28 o)…]`, drapeaux bit 7 = actif, bits 0-6 = jours (0 = dimanche) ; écriture `[02, n, …]` remplace toute la liste, accusé `[02]`. Trame longue : d'un bloc si écriture avec réponse, sinon morceaux de 20 octets.
+- `js/reveil.js` décide la liste : réveil vibreur à chaque heure de `leverJours` (une alarme par heure, ses jours), rappel du coucher 30 min avant l'heure conseillée (jour du soir visé), rappels de l'utilisateur ; 10 au plus. Première lecture : les réveils déjà présents (app Bionny) deviennent des rappels. Écrit seulement si la liste diffère, puis relu pour vérifier. Pas de réglage de durée ni de force de vibration dans ce protocole, et pas de notifications d'appel ou de message : sur iPhone c'est iOS qui les envoie (ANCS) une fois le bracelet associé, ce qui le bloque pour ViaWrist ; désactivé de base, la carte explique.
 
 `synchroniser(jours)` produit le même objet que `parseImport` (+ `activite`, `stress`) : tout passe par `fusionner`, puis `nuits` et `journees`.
 
@@ -64,8 +70,8 @@ Stockage : `localStorage` `bionny-reglages` et `bionny-sante` (noms gardés pour
 
 ## Tester
 
-- `npm test` : 55 tests (sante, coeur, bracelet, stats, coach, et `connexion.test.js` avec un faux bracelet)
-- `npm run test:navigateur` (site servi sur le port 8765) : scénarios dans un Chrome sans fenêtre, profil jetable (`test/navigateur/` : parcours, connexion avec faux Web Bluetooth, ouverture, Santé, sommeil). `CAPTURES=dossier` pour des images.
+- `npm test` : 65 tests (sante, coeur, bracelet, stats, coach, et `connexion.test.js` avec un faux bracelet)
+- `npm run test:navigateur` (site servi sur le port 8765) : scénarios dans un Chrome sans fenêtre, profil jetable (`test/navigateur/` : parcours, connexion avec faux Web Bluetooth, ouverture, Santé, sommeil, réveils). `CAPTURES=dossier` pour des images.
 - `python -m http.server 8765`, puis `outils/apercu.html#donnees/coeur` (données d'exemple, refuse d'écraser de vraies données) ou `outils/mobile.html#bilan` (cadre 390 px pour les captures headless)
 - Debug BLE : `chrome://bluetooth-internals` sur PC (couper le Bluetooth de l'iPhone pour libérer le bracelet)
 

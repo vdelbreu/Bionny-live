@@ -42,7 +42,8 @@ function entete(c) {
   const bouton = c.connecte ? '<button class="bouton petit" data-action="synchro">Synchroniser</button>' : '';
   const titre = R.prenom ? `Salut ${esc(R.prenom)}` : esc(dateLongue(maintenant));
   return `<div class="entete"><div><h2 class="titre-vue">${titre}</h2><p class="note">${esc(quand)}</p></div>${bouton}</div>`
-    + (changementHeure ? `<p class="bandeau-info">Changement d'heure : remets le bracelet à l'heure avec l'app Bionny.</p>` : '');
+    + (changementHeure && (!D.majBracelet || new Date(D.majBracelet).getTimezoneOffset() !== new Date(maintenant).getTimezoneOffset())
+      ? `<p class="bandeau-info">Changement d'heure : connecte le bracelet, ViaWrist le remet à l'heure.</p>` : '');
 }
 
 function accueil() {
@@ -151,7 +152,8 @@ const FICHES = {
   coucher(c) {
     const p = planSommeil(c), m = p.matin, jour = m.nom[0].toUpperCase() + m.nom.slice(1);
     const champ = `<label class="lever">${m.demain ? jour : 'Ce matin'}, je me lève à <input type="time" id="reveilCarte" data-jour="${m.jour}" value="${p.lever != null ? hhmm(p.lever) : ''}"></label>
-      <p class="note">Retenu pour tous les ${m.nom}s.</p>`;
+      <p class="note">Retenu pour tous les ${m.nom}s.</p>
+      <p class="note">${c.R.vibreur?.reveil && c.R.leverJours?.[m.jour] ? `Le bracelet vibrera à ${heure(p.lever)}.` : 'Réveil vibreur désactivé.'} <button class="lien" data-aller="reglages">Réveil et rappels</button></p>`;
     if (p.coucher == null) return { titre: 'Au lit ce soir', corps: `<p class="fiche-cle">Dis-moi à quelle heure tu te lèves.</p>${champ}` };
     return { titre: p.tard ? 'Il est l\'heure' : `Au lit vers ${heure(p.coucher)}`, corps: `
       <p class="fiche-cle">${p.tard ? `Tu peux encore dormir <b>environ ${duree(Math.floor(p.possible / 3e5) * 3e5)}</b> avant ton lever à ${heure(p.lever)}, les 15 min pour t'endormir déjà comptées.` : md(phraseBesoin(p, c.R.objectif * 60e3))}</p>

@@ -4,6 +4,7 @@
 import {
   UART, UART_ECRITURE, UART_NOTIF, V2, V2_ECRITURE, V2_NOTIF, demandes, minuitLocal,
   lireDirect, lireBatterie, lireActiviteDirecte, CollecteFc, CollecteActivite, CollecteVfc, CollecteStress, CollecteGros, lireSommeil, lireSpo2,
+  demandesReglages, lireReveils as decoderReveils,
 } from './bracelet.js';
 import { parseHR } from './coeur.js';
 
@@ -39,10 +40,15 @@ function diffuser(p, canal) { noter('←', canal, p); for (const f of E.abonnes)
 function ecouter(f) { E.abonnes.add(f); return () => E.abonnes.delete(f); }
 
 // Les écritures GATT doivent passer une par une
+// Une trame longue (liste de réveils) part d'un bloc si le bracelet accepte l'écriture avec réponse (iOS et Chrome la
+// découpent), sinon en morceaux de 20 octets, que le bracelet recolle grâce à la longueur annoncée, comme ses envois.
 function envoyer(p, v2 = false) {
   const c = v2 ? E.ecrireV2 : E.ecrire;
   noter('→', v2 ? 'v2' : 'v1', p);
-  E.file = E.file.catch(() => {}).then(() => (c.properties.write ? c.writeValueWithResponse(p) : c.writeValueWithoutResponse(p)));
+  const morceaux = c.properties.write || p.length <= 20 ? [p] : Array.from({ length: Math.ceil(p.length / 20) }, (_, i) => p.slice(i * 20, i * 20 + 20));
+  E.file = E.file.catch(() => {}).then(async () => {
+    for (const m of morceaux) await (c.properties.write ? c.writeValueWithResponse(m) : c.writeValueWithoutResponse(m));
+  });
   return E.file;
 }
 
@@ -94,6 +100,48 @@ export async function ouvrir(appareil, rappels) {
   });
   envoyer(demandes.batterie()).catch(() => {});
   return E.mode;
+}
+
+/* ---------- Écrits dans le bracelet : heure, vibreur, réveils ---------- */
+
+// Le direct est mis en pause le temps de l'échange, comme pour la synchro
+async function sansDirect(f) {
+  const enDirect = !!E.direct;
+  arreterDirect();
+  try { return await f(); } finally { if (enDirect) demarrerDirect(); }
+}
+// Remet l'horloge du bracelet à l'heure du téléphone (changement d'heure compris)
+export async function mettreALHeure(t = Date.now()) {
+  if (E.mode !== 'colmi') return false;
+  info(`mise à l'heure : ${new Date(t).toLocaleString('fr-FR')}`);
+  await envoyer(demandesReglages.heure(t));
+  return true;
+}
+export async function vibrer() {
+  if (E.mode !== 'colmi') return false;
+  info('test du vibreur');
+  await envoyer(demandesReglages.vibrer());
+  return true;
+}
+// Liste des réveils du bracelet ; null s'il ne répond pas (réveils non gérés par ce modèle)
+export function lireReveils() {
+  if (E.mode !== 'colmi' || !E.ecrireV2) return Promise.resolve(null);
+  return sansDirect(async () => {
+    const c = await collecter(demandesReglages.reveils(), new CollecteGros(0x2c), true, 3000);
+    const liste = c.octets.length ? decoderReveils(c.octets) : null;
+    info(liste ? `réveils lus : ${liste.length}` : 'réveils : pas de réponse du bracelet');
+    return liste;
+  });
+}
+// Remplace toute la liste ; true si le bracelet accuse réception
+export function ecrireReveils(liste) {
+  if (E.mode !== 'colmi' || !E.ecrireV2) return Promise.resolve(false);
+  return sansDirect(async () => {
+    info(`écriture de ${liste.length} réveil(s), canal v2 ${E.ecrireV2.properties.write ? 'avec' : 'sans'} réponse`);
+    const c = await collecter(demandesReglages.ecrireReveils(liste), new CollecteGros(0x2c), true, 3000);
+    info(c.octets.length ? 'réveils : écriture confirmée' : 'réveils : pas de confirmation');
+    return c.octets.length > 0;
+  });
 }
 
 export function fermer() {

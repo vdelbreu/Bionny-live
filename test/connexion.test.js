@@ -1,14 +1,16 @@
 // Faux bracelet Web Bluetooth qui répond au protocole Colmi : teste l'enchaînement de connexion.js sans matériel.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ouvrir, synchroniser, fermer, mode, demarrerDirect, arreterDirect, journal } from '../js/connexion.js';
-import { UART, UART_ECRITURE, UART_NOTIF, V2, V2_ECRITURE, V2_NOTIF } from '../js/bracelet.js';
+import { ouvrir, synchroniser, fermer, mode, demarrerDirect, arreterDirect, journal, lireReveils, ecrireReveils, mettreALHeure, vibrer } from '../js/connexion.js';
+import { UART, UART_ECRITURE, UART_NOTIF, V2, V2_ECRITURE, V2_NOTIF, paquetGros } from '../js/bracelet.js';
 import { nuits, fusionner, vide } from '../js/sante.js';
 
 const p16 = (...o) => { const p = new Uint8Array(16); p.set(o); return p; };
 const bcd = n => ((n / 10 | 0) << 4) | (n % 10);
 
-function fauxBracelet({ muetSur = [] } = {}) {
+// sansReponse : le canal v2 n'accepte que l'écriture sans réponse, les longues trames arrivent par morceaux de 20 octets
+function fauxBracelet({ muetSur = [], sansReponse = false } = {}) {
+  let reveils = [0x01, 0], tampon = [];   // liste en mémoire (charge de réponse à la lecture) ; trame v2 en cours
   const ecoutes = { [UART_NOTIF]: [], [V2_NOTIF]: [] };
   const emettre = (uuid, octets) => setTimeout(() => {
     for (const f of ecoutes[uuid]) f({ target: { value: new DataView(Uint8Array.from(octets).buffer) } });
@@ -38,12 +40,25 @@ function fauxBracelet({ muetSur = [] } = {}) {
       for (let i = 0; i < o.length; i += 20) emettre(V2_NOTIF, o.slice(i, i + 20));   // MTU de 20 octets
     }
     if (p[0] === 0xbc && p[1] === 0x2a) emettre(V2_NOTIF, [0xbc, 0x2a, 0, 0, 0, 0]);
+    if (p[0] === 0xbc && p[1] === 0x2c) {
+      const charge = [...p.slice(6)], r = charge[0] === 0x02 ? [0x02] : reveils;
+      if (charge[0] === 0x02) reveils = [0x01, ...charge.slice(1)];
+      const o = [...paquetGros(0x2c, r)];
+      for (let i = 0; i < o.length; i += 20) emettre(V2_NOTIF, o.slice(i, i + 20));
+    }
+  };
+  // recolle une grande trame reçue en morceaux grâce à sa longueur annoncée
+  const recevoir = p => {
+    if (!tampon.length && p[0] !== 0xbc) return repondre(p);
+    tampon.push(...p);
+    if (tampon.length >= (tampon[2] | (tampon[3] << 8)) + 6) { const t = Uint8Array.from(tampon); tampon = []; repondre(t); }
   };
   const carac = uuid => ({
-    properties: { write: true },
+    properties: { write: !(sansReponse && uuid === V2_ECRITURE) },
     addEventListener: (_, f) => ecoutes[uuid]?.push(f),
     startNotifications: async () => {},
-    writeValueWithResponse: async p => repondre(p),
+    writeValueWithResponse: async p => recevoir(p),
+    writeValueWithoutResponse: async p => { if (p.length > 20) throw new Error('trop long sans réponse'); recevoir(p); },
   });
   const services = {
     [UART]: { [UART_ECRITURE]: carac(UART_ECRITURE), [UART_NOTIF]: carac(UART_NOTIF) },
@@ -116,5 +131,31 @@ test('mesure en direct : valeurs nulles et code 2 ignorés, la vraie valeur arri
   assert.match(journal(), /→ v1 69 01 01/);
   assert.match(journal(), /← v1 69 01 00 40/);
   assert.match(journal(), /→ v1 6a 01 00 00/);
+  fermer();
+});
+
+test('réveils : lecture, écriture en un bloc ou en morceaux de 20 octets, relecture identique', async () => {
+  const liste = [
+    { minutes: 7 * 60 + 20, jours: [1, 2, 4], actif: true, nom: 'Reveil' },
+    { minutes: 8 * 60, jours: [3], actif: true, nom: 'Reveil' },
+    { minutes: 21 * 60 + 35, jours: [3], actif: true, nom: 'Coucher' },
+    { minutes: 13 * 60, jours: [0, 1, 2, 3, 4, 5, 6], actif: false, nom: 'Médicament' },
+  ];
+  for (const sansReponse of [false, true]) {
+    await ouvrir(fauxBracelet({ sansReponse }), { mesure() {}, contact() {}, batterie() {} });
+    assert.deepEqual(await lireReveils(), []);
+    assert.equal(await ecrireReveils(liste), true);
+    assert.deepEqual(await lireReveils(), liste);
+    assert.equal(await mettreALHeure(new Date(2026, 9, 25, 3, 0).getTime()), true);
+    assert.equal(await vibrer(), true);
+    assert.match(journal(), /écriture de 4 réveil\(s\), canal v2 (avec|sans) réponse/);
+    fermer();
+  }
+});
+
+test('réveils : un bracelet qui ne répond pas donne null, sans bloquer', async () => {
+  await ouvrir(fauxBracelet({ muetSur: [0xbc] }), { mesure() {}, contact() {}, batterie() {} });
+  assert.equal(await lireReveils(), null);
+  assert.equal(await ecrireReveils([]), false);
   fermer();
 });
