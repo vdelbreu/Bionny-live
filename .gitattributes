@@ -1,0 +1,2 @@
+# scripts bash : fins de ligne Unix, sinon bash échoue sous Windows
+*.sh text eol=lf
