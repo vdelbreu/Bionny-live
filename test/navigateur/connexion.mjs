@@ -45,6 +45,17 @@ await p.clic('[data-action="chercher"]'); await attendre(1500);
 b = await ble();
 ok('« Chercher » ouvre la liste et connecte', b.requestDevice === 1 && (await puce()).startsWith('Connecté'), await etat());
 
+// navigateur qui ne répond plus : au bout de 15 s, on abandonne au lieu de rester en « Connexion… »
+await p.clic('#btnConnect'); await attendre(500);            // déconnecter
+await js('window.__ble.bloque = true');
+await js(`document.querySelector('[data-action="chercher"]').click()`); await attendre(1000);
+ok('bloqué : « Connexion… » affiché', /Connexion/.test(await puce()), await puce());
+await attendre(15500);
+ok('bloqué : abandon au bout de 15 s, aide affichée', (await puce()) === 'Déconnecté' && !(await js(`document.querySelector('#aideConnexion').hidden`)), await puce());
+await js('window.__ble.bloque = false');
+await p.clic('[data-action="chercher"]'); await attendre(1500);
+ok('bloqué puis débloqué : la connexion repart', (await puce()).startsWith('Connecté'), await puce());
+
 const j = await js(`import('./js/connexion.js').then(m => m.journal())`);
 ok('journal : étapes de connexion notées', /getDevices : 1 appareil/.test(j) && /connexion directe|libéré/.test(j));
 

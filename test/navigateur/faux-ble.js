@@ -33,6 +33,7 @@
   appareil.gatt = {
     connected: false,
     async connect() {
+      if (etat.bloque) return new Promise(() => {});   // le navigateur ne répond jamais
       if (etat.injoignable) { await new Promise(r => setTimeout(r, 300)); throw Object.assign(new Error('injoignable'), { name: 'NetworkError' }); }
       ecoutes.length = 0; this.connected = true; etat.connexions++;
       return { getPrimaryService: async uuid => {

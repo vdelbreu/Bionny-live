@@ -134,7 +134,9 @@ async function attendreAnnonce(a, ms = 5000) {
   finally { try { a.unwatchAdvertisements?.(); } catch { /* rien à arrêter */ } }
 }
 
-async function brancherAppareil(appareil, { delai = 0, discret = false } = {}) {
+// Jamais d'attente sans fin : si le navigateur ne répond pas, on abandonne au bout de 15 s et l'aide s'affiche
+const DELAI_CONNEXION = 15000;
+async function brancherAppareil(appareil, { delai = DELAI_CONNEXION, discret = false } = {}) {
   arreterDemo(); remiseAZero();
   S.appareil = appareil; S.source = 'ble'; S.libere = false;
   appareil.addEventListener('gattserverdisconnected', deconnexion);
@@ -186,9 +188,9 @@ async function chercher(tous = false) {
   return brancherAppareil(appareil);
 }
 const avecDelai = (p, ms) => Promise.race([p, new Promise((_, non) => setTimeout(() => non(new Error('délai dépassé')), ms))]);
-async function brancher(avecHistorique, delai = 0) {
+async function brancher(avecHistorique, delai = DELAI_CONNEXION) {
   const ouverture = B.ouvrir(S.appareil, rappels);
-  const mode = await (delai ? avecDelai(ouverture, delai) : ouverture);
+  const mode = await avecDelai(ouverture, delai);
   puce('Connecté · ' + (S.appareil.name || 'Bionny'), 'live');
   if (mode === 'colmi') {
     if (avecHistorique && O.synchroUtile()) await synchroniserHistorique();
