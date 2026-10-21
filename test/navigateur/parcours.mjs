@@ -6,6 +6,10 @@ const { js, ok, texte, clic } = p;
 await p.iphone();
 await p.aller('/outils/apercu.html#jour', 2500);
 
+// 6 onglets, étiquettes lisibles sans déborder sur un écran d'iPhone
+ok('6 onglets', (await js(`document.querySelectorAll('.onglets button').length`)) === 6);
+ok('étiquettes des onglets sans débordement', await js(`[...document.querySelectorAll('.onglets button')].every(b => b.scrollWidth <= b.clientWidth + 1)`));
+
 // Aujourd'hui : tuiles, puis fiches au toucher
 ok('tuile forme', !!(await texte('.tuile.forme .forme-titre')), await texte('.tuile.forme .forme-titre'));
 ok('6 tuiles de chiffres', (await js(`document.querySelectorAll('.grille-tuiles .tuile').length`)) === 6);
@@ -43,8 +47,16 @@ await js(`(() => { document.querySelector('#question').value = 'je suis crevé';
 ok('coach : question libre comprise', !/pas compris/.test(await texte('#chat .echange .bulle.coach')), (await texte('#chat .echange .bulle.coach')).slice(0, 70));
 await js(`(() => { document.querySelector('#question').value = 'bonjour'; document.querySelector('#saisieCoach').requestSubmit(); })()`); await attendre(300);
 ok('coach : question incomprise signalée', /pas compris/.test(await texte('#chat .echange .bulle.coach')));
-await clic('#btnCoh'); await attendre(1500);
-ok('respiration guidée', /Inspire|Expire|Retiens/.test(await texte('#orbText')), await texte('#orbText'));
+// Détente : choix de l'exercice et de la durée, cercle guidé
+await clic('.onglets [data-vue="detente"]'); await attendre(300);
+ok('détente : 4 exercices', (await js(`document.querySelectorAll('#exos [data-exo]').length`)) === 4);
+await clic('[data-exo="q478"]'); await clic('[data-duree-exo="1"]');
+ok('détente : 4-7-8 choisi, 1 min', (await texte('#exoTitre')) === 'Respiration 4-7-8' && (await js(`document.querySelector('[data-duree-exo="1"]').getAttribute('aria-pressed')`)) === 'true');
+await clic('#btnCoh'); await attendre(5500);
+ok('détente : 4-7-8 guidé (inspire 4 s puis retiens)', /Retiens/.test(await texte('#exoPhase')) && /^\d$/.test(await texte('#orbText')), `${await texte('#exoPhase')} ${await texte('#orbText')}`);
+await clic('#btnCoh');
+await clic('[data-exo="soupir"]'); await clic('#btnCoh'); await attendre(500);
+ok('détente : soupir physiologique guidé', /Inspire par le nez/.test(await texte('#exoPhase')), await texte('#exoPhase'));
 await clic('#btnCoh');
 
 // Données
@@ -58,10 +70,11 @@ ok('clic dans le calendrier', !!(await texte('.jour-nav strong')), await texte('
 await clic('[data-plage="90"]'); await attendre(250);
 ok('période 90 jours', (await js(`document.querySelector('[data-plage="90"]').getAttribute('aria-pressed')`)) === 'true');
 
-// Réglages, puis démo du direct
-await clic('.onglets [data-vue="reglages"]'); await attendre(300);
+// Réveil (heures de lever), puis démo du direct depuis Réglages
+await clic('.onglets [data-vue="reveil"]'); await attendre(300);
 const jourVise = await js(`new Date(Date.now() + (new Date().getHours() >= 5 ? 864e5 : 0)).getDay()`);
 ok('réglages : lever enregistré pour ce jour de la semaine', (await js(`document.querySelector('#leverJours input[data-jour="${jourVise}"]').value`)) === '06:30');
+await clic('.onglets [data-vue="reglages"]'); await attendre(300);
 await clic('#btnDemo'); await attendre(3500);
 ok('démo : pouls affiché sur Aujourd’hui', /^\d{2,3}/.test(await texte('#bpm') || ''), await texte('#bpm'));
 ok('démo : tracé visible', (await js(`getComputedStyle(document.querySelector('#chart')).display`)) !== 'none');

@@ -19,17 +19,21 @@ await p.clic('#btnConnect'); await attendre(1500);
 b = await ble();
 ok('1er lancement : Connecter ouvre la liste une fois', b.requestDevice === 1 && b.connexions === 1, await etat());
 
+await attendre(2500);
+ok('pouls en continu affiché', /^\d{2,3}/.test(await p.texte('#bpm') || '') && (await ble()).ecrits.includes('1e 01'), await p.texte('#bpm'));
 await visibilite('hidden');
 b = await ble();
-ok('app quittée : bracelet libéré', b.deconnexions === 1 && !(await puce()).startsWith('Connecté'), await etat());
-await visibilite('visible'); await attendre(1200);
+ok('app quittée : connexion gardée', b.deconnexions === 0 && (await puce()).startsWith('Connecté'), await etat());
+await visibilite('visible'); await attendre(1500);
 b = await ble();
-ok('retour : reconnecté sans liste', b.requestDevice === 1 && b.connexions === 2, await etat());
+ok('retour : toujours connecté, le direct continue', b.connexions === 1 && (await puce()).startsWith('Connecté') && /^\d{2,3}/.test(await p.texte('#bpm') || ''), await etat());
 
 await p.clic('#btnConnect'); await attendre(500);
 await p.clic('#btnConnect'); await attendre(1500);
 b = await ble();
-ok('Déconnecter puis Connecter : sans liste', b.requestDevice === 1 && b.connexions === 3, await etat());
+ok('Déconnecter puis Connecter : sans liste', b.requestDevice === 1 && b.connexions === 2, await etat());
+await js(`dispatchEvent(new Event('pagehide'))`); await attendre(300);
+ok('page fermée : bracelet libéré', (await ble()).deconnexions === 2, await etat());
 
 await cmd('Page.reload'); await attendre(3000);
 b = await ble();

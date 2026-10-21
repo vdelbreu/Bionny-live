@@ -24,6 +24,9 @@
     }
     if (p[0] === 0x03) emettre(p16(0x03, 81, 0));
     if (p[0] === 0x69 && p[2] === 1) emettre(p16(0x69, 1, 0, 64));
+    // pouls en continu : une valeur par seconde jusqu'à l'arrêt (1e 02) ou la déconnexion
+    if (p[0] === 0x1e && p[1] === 0x01 && !etat.continu) etat.continu = setInterval(() => { if (appareil.gatt.connected) emettre(p16(0x1e, 66 + Math.round(Math.random() * 4))); }, 1000);
+    if (p[0] === 0x1e && p[1] === 0x02) { clearInterval(etat.continu); etat.continu = null; }
   };
   const carac = () => ({ properties: { write: true }, addEventListener: (_, f) => ecoutes.push(f), startNotifications: async () => {},
     writeValueWithResponse: async p => repondre(p), writeValueWithoutResponse: async p => repondre(p) });
@@ -41,7 +44,7 @@
         return { getCharacteristic: async () => carac() };
       } };
     },
-    disconnect() { if (!this.connected) return; this.connected = false; etat.deconnexions++; appareil.dispatchEvent(new Event('gattserverdisconnected')); },
+    disconnect() { if (!this.connected) return; this.connected = false; clearInterval(etat.continu); etat.continu = null; etat.deconnexions++; appareil.dispatchEvent(new Event('gattserverdisconnected')); },
   };
   Object.defineProperty(navigator, 'bluetooth', { configurable: true, value: {
     requestDevice: async options => { etat.requestDevice++; etat.toutMontrer = !!options?.acceptAllDevices; sessionStorage.setItem('faux-autorise', '1'); return appareil; },

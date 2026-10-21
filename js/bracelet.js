@@ -40,7 +40,11 @@ const aMinute = (minuit, minutes) => { const d = new Date(minuit); return new Da
 
 export const demandes = {
   batterie: () => paquet(0x03),
-  direct: () => paquet(0x69, [1, 1]),          // mesure FC en temps réel : démarrer
+  // pouls en continu (comme Gadgetbridge) : une valeur par seconde, à relancer toutes les 30 s (coupe au bout de 60 s)
+  continu: () => paquet(0x1e, [0x01]),
+  continuSuite: () => paquet(0x1e, [0x03]),
+  continuStop: () => paquet(0x1e, [0x02]),
+  direct: () => paquet(0x69, [1, 1]),          // mesure ponctuelle (secours si le continu n'est pas géré) : démarrer
   directSuite: () => paquet(0x69, [1, 3]),     // continuer
   directStop: () => paquet(0x6a, [1, 0, 0]),
   fcJour: minuit => paquet(0x15, u32le(secondesMurales(minuit))),
@@ -55,6 +59,9 @@ export const demandes = {
 /* ---------- Réponses courtes ---------- */
 
 // 0x69 : [cmd, type, code d'erreur, bpm]. Erreur 1 = bracelet mal porté, 2 = pas encore de valeur.
+// Pouls en continu : [1e, bpm] ; 0 tant que le bracelet n'a pas de valeur
+export const lireContinu = p => (p[0] === 0x1e ? { bpm: p[1] } : null);
+
 export function lireDirect(p) {
   if (p[0] !== 0x69 || p[1] !== 1) return null;
   return { erreur: p[2], bpm: p[3] };

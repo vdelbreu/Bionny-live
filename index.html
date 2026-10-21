@@ -51,6 +51,7 @@
             <button class="primary" id="btnConnect">Connecter</button>
           </div>
         </div>
+        <p class="note" id="directPlus" hidden></p>
         <p class="note" id="dernierPouls" hidden></p>
         <canvas id="chart" aria-label="Pouls des deux dernières minutes"></canvas>
       </article>
@@ -86,58 +87,56 @@
         <div class="chat" id="chat" aria-live="polite"></div>
       </article>
       <div id="coachSemaine"></div>
-      <article class="panel" id="outilCoh">
-        <div class="carte-tete"><h3>Respirer 5 min</h3><span class="note">cohérence cardiaque</span></div>
-        <div class="breathe">
-          <div class="orb"><i id="orb"></i><span id="orbText">Prêt</span></div>
-          <div class="breathe-txt">
-            <div class="big" id="rsa">–<small>bpm d'écart</small></div>
-            <p class="note">Inspire quand le cercle grossit, expire quand il rétrécit. Ça calme en quelques minutes, avant de dormir ou un moment stressant.</p>
-          </div>
-        </div>
-        <div class="actions"><button id="btnCoh" aria-pressed="false">Démarrer</button></div>
-      </article>
     </section>
 
     <!-- ===== Données : sous-onglets, détail du jour, tendances ===== -->
     <section class="vue" id="vue-donnees" data-vue="donnees" hidden></section>
 
-    <!-- ===== Réglages ===== -->
-    <section class="vue" id="vue-reglages" data-vue="reglages" hidden>
-      <div class="entete"><div><h2 class="titre-vue">Réglages</h2></div></div>
-
-      <article class="panel">
-        <h3>Toi</h3>
-        <div class="champs">
-          <label class="field"><span>Prénom</span><input id="prenom" type="text" autocomplete="given-name" class="large" maxlength="30"></label>
-          <label class="field"><span>Âge</span><input id="age" type="number" inputmode="numeric" min="10" max="99"></label>
-        </div>
-      </article>
-
-      <article class="panel">
-        <h3>Objectifs</h3>
-        <div class="champs">
-          <label class="field"><span>Sommeil</span><input id="objectif" type="number" inputmode="decimal" min="5" max="11" step="0.5"><span class="note">heures par nuit</span></label>
-          <div class="field"><span>Heure de lever</span>
-            <div class="lever-jours" id="leverJours">
-              <label>Lundi<input type="time" data-jour="1"></label>
-              <label>Mardi<input type="time" data-jour="2"></label>
-              <label>Mercredi<input type="time" data-jour="3"></label>
-              <label>Jeudi<input type="time" data-jour="4"></label>
-              <label>Vendredi<input type="time" data-jour="5"></label>
-              <label>Samedi<input type="time" data-jour="6"></label>
-              <label>Dimanche<input type="time" data-jour="0"></label>
-            </div>
-            <span class="note" id="reveilNote"></span>
+    <!-- ===== Détente : respiration guidée, avec le pouls en direct ===== -->
+    <section class="vue" id="vue-detente" data-vue="detente" hidden>
+      <div class="entete"><div><h2 class="titre-vue">Détente</h2><p class="note">Suis le cercle. Bracelet connecté, tu vois ton pouls descendre.</p></div></div>
+      <div class="exos" id="exos">
+        <button class="exo" data-exo="coherence" aria-pressed="true"><b>Cohérence cardiaque</b><span>Calme et concentration · 5&nbsp;min</span></button>
+        <button class="exo" data-exo="soupir" aria-pressed="false"><b>Soupir physiologique</b><span>Stress, tout de suite · 3&nbsp;min</span></button>
+        <button class="exo" data-exo="q478" aria-pressed="false"><b>Respiration 4-7-8</b><span>Pour t'endormir · 3&nbsp;min</span></button>
+        <button class="exo" data-exo="carree" aria-pressed="false"><b>Respiration carrée</b><span>Avant un oral, un examen · 4&nbsp;min</span></button>
+      </div>
+      <article class="panel" id="outilCoh">
+        <div class="carte-tete"><h3 id="exoTitre">Cohérence cardiaque</h3></div>
+        <div class="breathe">
+          <div class="orb"><i id="orb"></i><span id="orbText">Prêt</span></div>
+          <div class="breathe-txt">
+            <div class="exo-phase" id="exoPhase">Prêt</div>
+            <div class="big" id="rsa">–<small>bpm</small></div>
+            <p class="note" id="exoAide"></p>
           </div>
-          <label class="field"><span>Pas</span><input id="objectifPas" type="number" inputmode="numeric" min="1000" max="40000" step="500"><span class="note">par jour</span></label>
         </div>
-        <p class="note">Ton heure de lever sert à calculer quand te coucher, et au réveil vibreur du bracelet (Réveil et rappels, juste en dessous).</p>
+        <div class="segment" id="exoDurees">
+          <button class="petit" data-duree-exo="1">1 min</button><button class="petit" data-duree-exo="3">3 min</button><button class="petit" data-duree-exo="5">5 min</button><button class="petit" data-duree-exo="10">10 min</button>
+        </div>
+        <div class="actions"><button class="primary" id="btnCoh" aria-pressed="false">Démarrer</button></div>
+        <p class="note fort" id="exoResultat"></p>
       </article>
+    </section>
 
+    <!-- ===== Réveil : réveils et rappels écrits dans le bracelet ===== -->
+    <section class="vue" id="vue-reveil" data-vue="reveil" hidden>
+      <div class="entete"><div><h2 class="titre-vue">Réveil</h2><p class="note">Le bracelet vibre tout seul, même téléphone éteint.</p></div></div>
       <article class="panel" id="carteReveils">
         <h3>Réveil et rappels</h3>
         <p class="note fort" id="etatReveils"></p>
+            <div class="field"><span>Mes heures de lever</span>
+              <div class="lever-jours" id="leverJours">
+                <label>Lundi<input type="time" data-jour="1"></label>
+                <label>Mardi<input type="time" data-jour="2"></label>
+                <label>Mercredi<input type="time" data-jour="3"></label>
+                <label>Jeudi<input type="time" data-jour="4"></label>
+                <label>Vendredi<input type="time" data-jour="5"></label>
+                <label>Samedi<input type="time" data-jour="6"></label>
+                <label>Dimanche<input type="time" data-jour="0"></label>
+              </div>
+              <span class="note" id="reveilNote"></span>
+            </div>
         <label class="interrupteur"><input type="checkbox" id="vibReveil"><span>Réveil vibreur à mes heures de lever</span></label>
         <p class="note" id="resumeLevers"></p>
         <label class="interrupteur"><input type="checkbox" id="vibCoucher"><span>Rappel du coucher, 30 min avant l'heure conseillée</span></label>
@@ -160,6 +159,28 @@
           </ol>
           <p class="note"><b>Attention :</b> l'iPhone garde alors le bracelet pour lui. ViaWrist ne le retrouvera plus après fermeture de la page. Pour revenir en arrière : « Oublier cet appareil » et Bluetooth coupé pour l'app Bionny.</p>
         </div>
+      </article>
+    </section>
+
+    <!-- ===== Réglages ===== -->
+    <section class="vue" id="vue-reglages" data-vue="reglages" hidden>
+      <div class="entete"><div><h2 class="titre-vue">Réglages</h2></div></div>
+
+      <article class="panel">
+        <h3>Toi</h3>
+        <div class="champs">
+          <label class="field"><span>Prénom</span><input id="prenom" type="text" autocomplete="given-name" class="large" maxlength="30"></label>
+          <label class="field"><span>Âge</span><input id="age" type="number" inputmode="numeric" min="10" max="99"></label>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h3>Objectifs</h3>
+        <div class="champs">
+          <label class="field"><span>Sommeil</span><input id="objectif" type="number" inputmode="decimal" min="5" max="11" step="0.5"><span class="note">heures par nuit</span></label>
+          <label class="field"><span>Pas</span><input id="objectifPas" type="number" inputmode="numeric" min="1000" max="40000" step="500"><span class="note">par jour</span></label>
+        </div>
+        <p class="note">Tes heures de lever, jour par jour, se règlent dans l'onglet Réveil.</p>
       </article>
 
       <article class="panel">
@@ -256,6 +277,8 @@
   <button data-vue="jour"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h4l2-5 4 10 2-5h8"/></svg>Aujourd'hui</button>
   <button data-vue="coach"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg>Coach</button>
   <button data-vue="donnees"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V12M10 20V6M15 20v-9M20 20V9"/></svg>Données</button>
+  <button data-vue="detente"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h10a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7"/></svg>Détente</button>
+  <button data-vue="reveil"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="7"/><path d="M12 9.5V13l2.5 2M5 4 2.5 6.5M19 4l2.5 2.5"/></svg>Réveil</button>
   <button data-vue="reglages"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Réglages</button>
 </nav>
 <div class="tip" id="tip" role="tooltip" hidden></div>

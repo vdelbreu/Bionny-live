@@ -13,7 +13,7 @@ import { rendreJour, brancherFiches } from './vues/jour.js';
 import { rendreCoach, brancherCoach } from './vues/coach.js';
 import { rendreDonnees, brancherDonnees, ouvrirDonnees } from './vues/donnees.js';
 
-const VUES = ['jour', 'coach', 'donnees', 'reglages'];
+const VUES = ['jour', 'coach', 'donnees', 'detente', 'reveil', 'reglages'];
 const ANCIENNES = { direct: 'jour', semaine: 'donnees', bilan: 'coach' };
 // objectif en minutes ; leverJours = heure de lever « HH:MM » par jour de la semaine (0 = dimanche), selon tes cours ;
 // reveil = ancienne heure unique, gardée seulement le temps de la reporter sur un jour
@@ -296,16 +296,16 @@ function modifierVibreur(f) {
   f(R.vibreur);
   reveilsNonGeres = false;   // tu viens de changer quelque chose : on réessaie
   sauverReglages();
-  rendreReglages();
+  rendreReveils();
   // envoi groupé : plusieurs changements de suite partent ensemble
   clearTimeout(envoiReveils);
-  envoiReveils = setTimeout(() => synchroniserReveils().catch(e => { etatReveils = `Envoi impossible (${e.message}).`; rendreReglages(); }), 1200);
+  envoiReveils = setTimeout(() => synchroniserReveils().catch(e => { etatReveils = `Envoi impossible (${e.message}).`; rendreReveils(); }), 1200);
 }
 async function synchroniserReveils() {
-  if (!enDirect()) { etatReveils = 'Sera envoyé au bracelet à la prochaine connexion.'; rendreReglages(); return; }
+  if (!enDirect()) { etatReveils = 'Sera envoyé au bracelet à la prochaine connexion.'; rendreReveils(); return; }
   if (reveilsNonGeres) return;   // déjà sans réponse dans cette session : pas 3 s d'attente à chaque retour sur l'app
   const lus = await lireReveils();
-  if (lus == null) { reveilsNonGeres = true; etatReveils = "Le bracelet n'a pas répondu aux réveils : ce modèle ne les gère peut-être pas."; rendreReglages(); return; }
+  if (lus == null) { reveilsNonGeres = true; etatReveils = "Le bracelet n'a pas répondu aux réveils : ce modèle ne les gère peut-être pas."; rendreReveils(); return; }
   if (!R.vibreur.importe) {
     // première fois : les réveils déjà dans le bracelet (app Bionny) deviennent des rappels, rien n'est perdu
     R.vibreur.rappels = [...rappelsImportes(lus), ...R.vibreur.rappels].slice(0, 10);
@@ -318,7 +318,7 @@ async function synchroniserReveils() {
     const relus = await lireReveils();
     etatReveils = relus && memesReveils(voulus, relus) ? `Enregistré dans le bracelet à ${hm(Date.now())}.` : "Le bracelet n'a pas confirmé : reconnecte-le pour réessayer.";
   } else etatReveils = `À jour dans le bracelet (vérifié à ${hm(Date.now())}).`;
-  rendreReglages();
+  rendreReveils();
 }
 async function testerVibreur() {
   if (!enDirect()) return toast("Connecte le bracelet d'abord.");
@@ -329,11 +329,13 @@ const hhmmMin = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m 
 const LETTRES = [[1, 'L'], [2, 'M'], [3, 'M'], [4, 'J'], [5, 'V'], [6, 'S'], [0, 'D']];
 function rendreReveils() {
   const v = R.vibreur, plan = planSommeil(contexte());
+  for (const i of document.querySelectorAll('#leverJours input')) i.value = R.leverJours[i.dataset.jour] ?? '';
+  $('#reveilNote').textContent = `Selon tes cours. Vide : ton heure habituelle${plan.habituel != null ? ` (${heure(plan.habituel)})` : ''}.`;
   $('#vibReveil').checked = v.reveil;
   $('#vibCoucher').checked = v.coucher;
   const parHeure = new Map();
   for (const [j, h] of Object.entries(R.leverJours)) parHeure.set(h, [...(parHeure.get(h) || []), +j]);
-  $('#resumeLevers').textContent = !parHeure.size ? "Règle d'abord tes heures de lever, plus haut."
+  $('#resumeLevers').textContent = !parHeure.size ? "Règle d'abord tes heures de lever, juste au-dessus."
     : [...parHeure].sort().map(([h, jours]) => `${heure(+h.slice(0, 2) * 60 + +h.slice(3))} ${joursCourts(jours)}`).join(' · ');
   $('#listeRappels').innerHTML = v.rappels.map((r, i) => `<div class="rappel" data-rappel="${i}">
     <div class="rappel-ligne"><input type="time" data-champ="heure" value="${hhmmMin(r.minutes)}" aria-label="Heure du rappel">
@@ -356,14 +358,10 @@ function rendreReglages() {
   $('#age').value = R.age;
   $('#objectif').value = R.objectif / 60;
   $('#objectifPas').value = R.objectifPas;
-  for (const i of document.querySelectorAll('#leverJours input')) i.value = R.leverJours[i.dataset.jour] ?? '';
-  const habituel = planSommeil(c).habituel;
-  $('#reveilNote').textContent = `Selon tes cours. Vide : ton heure habituelle${habituel != null ? ` (${heure(habituel)})` : ''}.`;
   $('#fcmaxMesuree').value = R.fcmaxMesuree ?? '';
   $('#fcmaxMesuree').placeholder = String(fcMaxTanaka(R.age));
   $('#fcmaxNote').textContent = R.fcmaxMesuree ? 'ta valeur mesurée' : `vide : estimée à ${fcMaxTanaka(R.age)} bpm`;
   $('#urlApp').textContent = location.origin + location.pathname;
-  rendreReveils();
   $('#etatSante').textContent = R.santeJusqua ? `Pouls envoyé jusqu'au ${dateSante(R.santeJusqua).replace(' ', ' à ')}.` : 'Jamais envoyé.';
   const date = t => `le ${new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} à ${hm(t)}`;
   $('#etatBracelet').textContent = (enDirect() ? 'Connecté. ' : 'Pas connecté. ')
@@ -390,6 +388,7 @@ function rendre(v = vue) {
   else if (v === 'coach') rendreCoach(contexte());
   else if (v === 'donnees') rendreDonnees(contexte());
   else if (v === 'reglages') rendreReglages();
+  else if (v === 'reveil') rendreReveils();
 }
 // v peut viser un sous-onglet de Données : « donnees/coeur » ou « donnees/coeur/2026-10-12 »
 function montrerVue(v = '') {
@@ -415,8 +414,11 @@ function demarrer() {
     apresConnexion: async () => { await mettreALHeure(); await synchroniserReveils(); },
     activite: a => {
       pasDirect = { cle: cleJour(Date.now()), pas: a.pas };
-      const el = $('#valPas');
-      if (el) el.textContent = nf(Math.max(D.pas[pasDirect.cle] ?? 0, a.pas));
+      const el = $('#valPas'), pas = nf(Math.max(D.pas[pasDirect.cle] ?? 0, a.pas));
+      if (el) el.textContent = pas;
+      // sous le pouls en direct : les pas du jour, au fil de la marche
+      $('#directPlus').hidden = false;
+      $('#directPlus').textContent = `${pas} pas aujourd'hui${a.dist ? ` · ${(a.dist / 1000).toFixed(1).replace('.', ',')} km` : ''}`;
     },
   });
   brancherDonnees(() => rendre('donnees'));
@@ -469,7 +471,7 @@ function demarrer() {
     const t = e.target;
     if (t.id === 'vibReveil') modifierVibreur(v => { v.reveil = t.checked; });
     if (t.id === 'vibCoucher') modifierVibreur(v => { v.coucher = t.checked; });
-    if (t.id === 'vibNotifs') { R.notifs = t.checked; sauverReglages(); rendreReglages(); }
+    if (t.id === 'vibNotifs') { R.notifs = t.checked; sauverReglages(); rendreReveils(); }
     const ligne = t.closest('[data-rappel]');
     if (!ligne) return;
     const i = +ligne.dataset.rappel;

@@ -23,7 +23,7 @@ await clic('#btnConnect'); await attendre(5000);
 let b = await ble();
 ok('connexion : bracelet remis à l’heure', b.ecrits.includes('01 ' + (await js(`(new Date().getFullYear() % 100).toString().padStart(2, '0')`))), b.ecrits.join(' | '));
 ok('connexion : réveils lus', b.ecrits.includes('bc 2c'));
-await clic('.onglets [data-vue="reglages"]'); await attendre(400);
+await clic('.onglets [data-vue="reveil"]'); await attendre(400);
 ok('réveil « Sport » de l’app Bionny gardé comme rappel', (await js(`document.querySelector('#listeRappels [data-champ="nom"]')?.value`)) === 'Sport');
 ok('rien réécrit tant que rien ne change', b.ecrits.filter(x => x === 'bc 2c').length === 1 && /À jour/.test(await texte('#etatReveils')), await texte('#etatReveils'));
 ok('notifications désactivées de base', !(await js(`document.querySelector('#vibNotifs').checked`)) && await js(`document.querySelector('#aideNotifs').hidden`));

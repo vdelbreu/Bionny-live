@@ -1,2 +1,2 @@
-# scripts bash : fins de ligne Unix, sinon bash échoue sous Windows
-*.sh text eol=lf
+# fins de ligne Unix partout (le site est servi tel quel), et pour les scripts bash sous Windows
+* text=auto eol=lf

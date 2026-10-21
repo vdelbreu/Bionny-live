@@ -27,7 +27,7 @@ export function rendreJour(c) {
   $('#jourEntete').innerHTML = entete(c);
   const el = $('#jourContenu');
   if (!aDesDonnees(c.D)) { el.innerHTML = accueil(); fermerFiche(); return; }
-  el.innerHTML = insecable(tuileForme(c) + `<div class="grille-tuiles">${[tuileSommeil, tuileCoucher, tuilePas, tuileEffort, tuileCoeur, tuileOxygene].map(f => f(c)).join('')}</div>`);
+  el.innerHTML = insecable(tuileForme(c) + siestesAConfirmer(c) + `<div class="grille-tuiles">${[tuileSommeil, tuileCoucher, tuilePas, tuileEffort, tuileCoeur, tuileOxygene].map(f => f(c)).join('')}</div>`);
   if (ficheOuverte) remplirFiche(ficheOuverte);
 }
 
@@ -56,6 +56,10 @@ function accueil() {
         <div class="actions"><button class="primary" data-aller="reglages">Comment faire</button><button data-action="exemple">Voir un exemple</button></div>`}
   </article>`;
 }
+
+// Siestes probables : la question est posée tout de suite sur Aujourd'hui, une réponse d'une touche
+const siestesAConfirmer = c => aConfirmer(c).map(p => `<div class="sieste-proposee"><span>Sieste de <b>${heure(minutes(p.debut))}</b> à <b>${heure(minutes(p.fin))}</b> ?</span>
+  <span class="actions"><button class="petit primary" data-action="sieste-oui" data-debut="${p.debut}" data-fin="${p.fin}">Oui</button><button class="petit" data-action="sieste-non" data-debut="${p.debut}">Non</button></span></div>`).join('');
 
 /* ---------- Tuiles : un chiffre, deux mots ---------- */
 
@@ -153,7 +157,7 @@ const FICHES = {
     const p = planSommeil(c), m = p.matin, jour = m.nom[0].toUpperCase() + m.nom.slice(1);
     const champ = `<label class="lever">${m.demain ? jour : 'Ce matin'}, je me lève à <input type="time" id="reveilCarte" data-jour="${m.jour}" value="${p.lever != null ? hhmm(p.lever) : ''}"></label>
       <p class="note">Retenu pour tous les ${m.nom}s.</p>
-      <p class="note">${c.R.vibreur?.reveil && c.R.leverJours?.[m.jour] ? `Le bracelet vibrera à ${heure(p.lever)}.` : 'Réveil vibreur désactivé.'} <button class="lien" data-aller="reglages">Réveil et rappels</button></p>`;
+      <p class="note">${c.R.vibreur?.reveil && c.R.leverJours?.[m.jour] ? `Le bracelet vibrera à ${heure(p.lever)}.` : 'Réveil vibreur désactivé.'} <button class="lien" data-aller="reveil">Onglet Réveil</button></p>`;
     if (p.coucher == null) return { titre: 'Au lit ce soir', corps: `<p class="fiche-cle">Dis-moi à quelle heure tu te lèves.</p>${champ}` };
     return { titre: p.tard ? 'Il est l\'heure' : `Au lit vers ${heure(p.coucher)}`, corps: `
       <p class="fiche-cle">${p.tard ? `Tu peux encore dormir <b>environ ${duree(Math.floor(p.possible / 3e5) * 3e5)}</b> avant ton lever à ${heure(p.lever)}, les 15 min pour t'endormir déjà comptées.` : md(phraseBesoin(p, c.R.objectif * 60e3))}</p>

@@ -38,7 +38,8 @@ ok('rétablir : retour au pouls', /ton pouls est remonté/.test(await texte('#fi
 
 await js(`document.querySelector('#formSieste').open = true`);
 await clic('#formSieste [data-duree="20"]');
-await js(`(() => { const d = new Date(Date.now() - 60 * 60e3), i = document.querySelector('#siesteFin'); i.value = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); })()`);
+// fin 10 min avant celle de la sieste confirmée : les deux se chevauchent, la déclarée doit remplacer l'autre
+await js(`(() => { const s = JSON.parse(localStorage.getItem('bionny-sante')).siestes[0], d = new Date(s.fin - 10 * 60e3), i = document.querySelector('#siesteFin'); i.value = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); })()`);
 await clic('[data-action="sieste-ok"]'); await attendre(300);
 const n = await js(`document.querySelectorAll('#ficheCorps .liste li').length`);
 ok('sieste déclarée par-dessus : remplace la confirmée', n === 1 && /20\smin/.test(await texte('#ficheCorps .liste')) && /remplace/.test(await texte('#toast')),

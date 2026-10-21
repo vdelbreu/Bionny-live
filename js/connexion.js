@@ -3,7 +3,7 @@
 // - sinon protocole Colmi du Bionny 4.0 (bracelet.js) : mesure en direct, batterie, synchronisation de l'historique.
 import {
   UART, UART_ECRITURE, UART_NOTIF, V2, V2_ECRITURE, V2_NOTIF, demandes, minuitLocal,
-  lireDirect, lireBatterie, lireActiviteDirecte, CollecteFc, CollecteActivite, CollecteVfc, CollecteStress, CollecteGros, lireSommeil, lireSpo2,
+  lireDirect, lireContinu, lireBatterie, lireActiviteDirecte, CollecteFc, CollecteActivite, CollecteVfc, CollecteStress, CollecteGros, lireSommeil, lireSpo2,
   demandesReglages, lireReveils as decoderReveils,
 } from './bracelet.js';
 import { parseHR } from './coeur.js';
@@ -87,6 +87,12 @@ export async function ouvrir(appareil, rappels) {
     if (b) rappels.batterie(b.niveau);
     const a = lireActiviteDirecte(p);
     if (a) rappels.activite?.(a);
+    const tr = lireContinu(p);
+    if (tr) {
+      if (E.direct) { E.direct.continu = Date.now(); E.direct.derniere = Date.now(); }
+      if (tr.bpm > 0) rappels.mesure(tr.bpm, [], true);
+      return;
+    }
     const d = lireDirect(p);
     if (!d) return;
     if (E.direct) E.direct.paquet = Date.now();          // le bracelet répond : la mesure est en cours
@@ -151,22 +157,45 @@ export function fermer() {
 
 /* ---------- Mesure en direct (protocole Bionny) ---------- */
 
+// Pouls en direct, sans fin tant que l'app est ouverte. D'abord le mode continu (0x1e) : « continue » toutes les 30 s,
+// relancé si le bracelet se tait 10 s. S'il ne répond pas du tout en 8 s, mesures ponctuelles (0x69) enchaînées.
+export const DELAIS_DIRECT = { essai: 8000, silence: 10000, suite: 30000 };
 export function demarrerDirect() {
   if (E.mode !== 'colmi' || E.direct) return;
-  E.direct = { derniere: 0, paquet: Date.now() };
-  envoyer(demandes.direct()).catch(() => {});
+  const t0 = Date.now();
+  E.direct = { mode: 'continu', debut: t0, continu: 0, suite: t0, derniere: 0, paquet: t0 };
+  info('pouls en continu : démarrage');
+  envoyer(demandes.continu()).catch(() => {});
   E.direct.minuterie = setInterval(() => {
-    const t = Date.now();
-    if (E.direct.derniere && t - E.direct.derniere < VIVANTE_MS) envoyer(demandes.directSuite()).catch(() => {});
-    else if (t - E.direct.paquet > RELANCE_MS) { E.direct.paquet = t; envoyer(demandes.direct()).catch(() => {}); }
-  }, SUITE_MS);
+    const d = E.direct, t = Date.now();
+    if (!d) return;
+    if (d.mode === 'continu') {
+      if (!d.continu && t - d.debut > DELAIS_DIRECT.essai) {
+        d.mode = 'ponctuel'; d.paquet = t; d.suite = t;
+        info('pouls en continu non géré : mesures ponctuelles');
+        envoyer(demandes.direct()).catch(() => {});
+      } else if (d.continu && t - d.continu > DELAIS_DIRECT.silence) {
+        d.continu = t; d.suite = t;
+        info('pouls en continu : relance après un silence');
+        envoyer(demandes.continu()).catch(() => {});
+      } else if (d.continu && t - d.suite >= DELAIS_DIRECT.suite) {
+        d.suite = t;
+        envoyer(demandes.continuSuite()).catch(() => {});
+      }
+    } else if (t - d.suite >= SUITE_MS) {
+      d.suite = t;
+      if (d.derniere && t - d.derniere < VIVANTE_MS) envoyer(demandes.directSuite()).catch(() => {});
+      else if (t - d.paquet > RELANCE_MS) { d.paquet = t; envoyer(demandes.direct()).catch(() => {}); }
+    }
+  }, 1000);
 }
 
 export function arreterDirect() {
   if (!E.direct) return;
+  const mode = E.direct.mode;
   clearInterval(E.direct.minuterie);
   E.direct = null;
-  if (connecte() && E.mode === 'colmi') envoyer(demandes.directStop()).catch(() => {});
+  if (connecte() && E.mode === 'colmi') envoyer(mode === 'continu' ? demandes.continuStop() : demandes.directStop()).catch(() => {});
 }
 
 /* ---------- Historique (protocole Bionny) ---------- */

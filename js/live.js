@@ -1,17 +1,16 @@
 // Direct, en haut d'Aujourd'hui : connexion au bracelet, synchro de l'historique, pouls en temps réel,
-// cohérence cardiaque (onglet Coach) et démo. Toutes les mesures, bracelet ou démo, passent par ajouterMesure().
+// respiration guidée (onglet Détente) et démo. Toutes les mesures, bracelet ou démo, passent par ajouterMesure().
 import { ZONES, zoneDe } from './coeur.js';
 import * as B from './connexion.js';
 
 const $ = s => document.querySelector(s);
-const RESPI_MS = 11000;        // 5,5 s inspiration + 5,5 s expiration
 const PERDU_MS = 15000;        // sans valeur depuis 15 s = signal perdu
 const O = { fcMax: () => 194, toast: () => {}, importer: () => {}, jours: () => 7, activite: () => {}, aller: () => {}, dernierReleve: () => null, synchroUtile: () => true, apresConnexion: async () => {} };
 const ATTENTE_DIRECT_MS = 45000;   // sans valeur en direct après 45 s : on le dit, et on montre le dernier relevé
 
 const S = {
   source: null, t0: performance.now(), mesures: [], bpm: null, derniere: 0,
-  coh: { on: false, debut: 0, cycles: {} }, demo: null, appareil: null, wake: null, attente: 0, dernierDessin: 0, libere: false, appareilOk: null,
+  coh: { on: false, debut: 0, cycles: {}, id: 'coherence', minutes: 5, pouls: [] }, demo: null, appareil: null, wake: null, attente: 0, dernierDessin: 0, libere: false, appareilOk: null,
 };
 const maintenant = () => (performance.now() - S.t0) / 1000;
 const zone = bpm => zoneDe(bpm, O.fcMax());
@@ -61,9 +60,10 @@ function ajouterMesure(bpm, contact) {
   S.mesures.push({ t: maintenant(), bpm });
   if (S.mesures.length > 7200) S.mesures.shift();
   if (S.coh.on) {
-    const ci = Math.floor((performance.now() - S.coh.debut) / RESPI_MS);
+    const ci = Math.floor((performance.now() - S.coh.debut) / dureeCycle(EXOS[S.coh.id] ?? EXOS.coherence));
     const c = S.coh.cycles[ci] ||= { min: bpm, max: bpm };
     c.min = Math.min(c.min, bpm); c.max = Math.max(c.max, bpm);
+    S.coh.pouls.push({ t: maintenant(), bpm });
   }
   $('#chipContact').hidden = contact !== false;
   if ($('#carteDirect').dataset.etat === 'mesure') carte('direct');
@@ -89,9 +89,10 @@ function rendreLive() {
   $('#bpm').classList.remove('vide');
   $('#zoneName').textContent = (S.source === 'demo' ? 'Démo · ' : '') + ZONES[zone(S.bpm)].nom;
   $('#zonePct').textContent = '';
-  if (S.coh.on) {
-    const a = amplitudeCoh();
-    $('#rsa').innerHTML = (a == null ? '…' : a.toFixed(1).replace('.', ',')) + "<small>bpm d'écart</small>";
+  // pendant un exercice : le pouls en direct, et pour la cohérence l'écart du pouls sur une respiration
+  if (S.coh.on && S.source) {
+    const a = S.coh.id === 'coherence' ? amplitudeCoh() : null;
+    $('#rsa').innerHTML = `${S.bpm}<small>bpm${a != null ? ` · écart ${a.toFixed(1).replace('.', ',')}` : ''}</small>`;
   }
 }
 
@@ -199,7 +200,12 @@ async function brancher(avecHistorique, delai = DELAI_CONNEXION) {
     B.demarrerDirect();
   }
   carte(S.bpm == null ? 'mesure' : 'direct', S.bpm == null ? 'Mesure du pouls en cours…' : null);
-  try { S.wake = await navigator.wakeLock?.request('screen'); } catch { /* pas de wake lock */ }
+  garderEcran();
+}
+// L'écran qui se verrouille met l'app en pause (iOS) : on le garde allumé pendant le direct, si le navigateur le permet
+async function garderEcran() {
+  if (!navigator.wakeLock) { if (!S.infoEcran) { S.infoEcran = true; B.info("écran : ce navigateur ne sait pas le garder allumé"); } return; }
+  try { S.wake = await navigator.wakeLock.request('screen'); B.info('écran maintenu allumé'); } catch (e) { B.info(`écran : ${e.message}`); }
 }
 async function deconnexion() {
   if (S.source !== 'ble') return;
@@ -293,7 +299,7 @@ function demarrerDemo() {
   d.timer = setInterval(() => {
     const t = (performance.now() - d.t0) / 1000;
     let rsa = 2.2 * Math.sin(2 * Math.PI * t / 4.3);
-    if (S.coh.on) { const p = ((performance.now() - S.coh.debut) % RESPI_MS) / RESPI_MS; rsa = 7.5 * Math.sin(2 * Math.PI * (p - .15)); }
+    if (S.coh.on) rsa = 7.5 * (phaseExo(EXOS[S.coh.id] ?? EXOS.coherence, performance.now() - S.coh.debut).volume - .5);
     const cible = S.coh.on ? 63 : 70 + 25 * (.5 - .5 * Math.cos(2 * Math.PI * t / 240));
     d.base += (cible - d.base) * .12;
     d.bruit = Math.max(-3, Math.min(3, d.bruit + (Math.random() - .5)));
@@ -309,30 +315,88 @@ function arreterDemo() {
 }
 export function lancerDemo() { demarrerDemo(); O.aller('jour'); }
 
-/* ---------- Cohérence cardiaque (onglet Coach) ---------- */
-let finCoh;
+/* ---------- Détente : respiration guidée (onglet Détente) ---------- */
+// Phases [consigne, secondes, volume visé] : 1 = poumons pleins, 0 = vides, null = on retient (le cercle ne bouge pas).
+// Cohérence cardiaque : 6 respirations par minute. Soupir physiologique : deux inspirations puis une longue expiration
+// (étude de l'université Stanford, 2023). 4-7-8 : pour s'endormir. Carrée : quatre temps égaux, contre le stress.
+export const EXOS = {
+  coherence: { nom: 'Cohérence cardiaque', pour: 'Calme et concentration', duree: 5,
+    phases: [['Inspire', 5.5, 1], ['Expire', 5.5, 0]],
+    aide: 'Inspire quand le cercle grossit, expire quand il rétrécit. Ton cœur se cale sur ta respiration.' },
+  soupir: { nom: 'Soupir physiologique', pour: 'Stress, tout de suite', duree: 3,
+    phases: [['Inspire par le nez', 2, .8], ['Encore un peu', 1, 1], ['Expire lentement', 6, 0]],
+    aide: 'Deux inspirations par le nez, la seconde plus courte, puis une longue expiration par la bouche.' },
+  q478: { nom: 'Respiration 4-7-8', pour: "Pour t'endormir", duree: 3,
+    phases: [['Inspire', 4, 1], ['Retiens', 7, null], ['Expire', 8, 0]],
+    aide: 'Inspire par le nez, retiens, puis expire longtemps par la bouche. Au lit, lumière éteinte.' },
+  carree: { nom: 'Respiration carrée', pour: 'Avant un oral, un examen', duree: 4,
+    phases: [['Inspire', 4, 1], ['Retiens', 4, null], ['Expire', 4, 0], ['Retiens', 4, null]],
+    aide: 'Quatre temps égaux. Garde le rythme sans forcer.' },
+};
+export const DUREES_EXO = [1, 3, 5, 10];
+const dureeCycle = exo => exo.phases.reduce((a, [, s]) => a + s, 0) * 1000;
+// Où en est-on dans le cycle : consigne, secondes restantes, volume des poumons (0 à 1) pour le cercle
+function phaseExo(exo, ms) {
+  let t = ms % dureeCycle(exo), v = exo.phases.at(-1)[2] ?? 0;
+  for (const [nom, sec, cible] of exo.phases) {
+    if (t < sec * 1000) {
+      const p = t / (sec * 1000), e = .5 - .5 * Math.cos(Math.PI * p);
+      return { nom, reste: sec - t / 1000, volume: cible == null ? v : v + (cible - v) * e };
+    }
+    t -= sec * 1000;
+    if (cible != null) v = cible;
+  }
+  return { nom: '', reste: 0, volume: v };
+}
+
+let finExo;
+export function choisirExo(id, minutes) {
+  if (S.coh.on) basculerCoh();
+  const exo = EXOS[id] ?? EXOS.coherence;
+  S.coh.id = EXOS[id] ? id : 'coherence';
+  S.coh.minutes = minutes ?? S.coh.minutes ?? exo.duree;
+  $('#exoTitre').textContent = exo.nom;
+  $('#exoAide').textContent = exo.aide;
+  $('#exoResultat').textContent = '';
+  document.querySelectorAll('#exos [data-exo]').forEach(b => b.setAttribute('aria-pressed', b.dataset.exo === S.coh.id));
+  document.querySelectorAll('#exoDurees [data-duree-exo]').forEach(b => b.setAttribute('aria-pressed', +b.dataset.dureeExo === S.coh.minutes));
+  rendreLive();
+}
 function basculerCoh() {
   S.coh.on = !S.coh.on;
   $('#btnCoh').setAttribute('aria-pressed', S.coh.on);
   $('#btnCoh').textContent = S.coh.on ? 'Arrêter' : 'Démarrer';
-  clearTimeout(finCoh);
+  clearTimeout(finExo);
+  const exo = EXOS[S.coh.id] ?? EXOS.coherence;
   if (S.coh.on) {
-    S.coh.debut = performance.now(); S.coh.cycles = {};
-    if (!S.source) $('#rsa').innerHTML = "–<small>connecte le bracelet pour voir l'effet</small>";
-    finCoh = setTimeout(() => { if (S.coh.on) { basculerCoh(); O.toast('5 minutes de respiration : bien joué.'); } }, 300000);
-  } else $('#orbText').textContent = 'Prêt';
+    S.coh.debut = performance.now(); S.coh.cycles = {}; S.coh.pouls = [];
+    $('#exoResultat').textContent = '';
+    if (!S.source) $('#rsa').innerHTML = '–<small>bpm</small>';
+    finExo = setTimeout(() => { if (S.coh.on) { basculerCoh(); O.toast(`${S.coh.minutes} min de ${exo.nom.toLowerCase()} : bien joué.`); } }, S.coh.minutes * 60000);
+  } else {
+    $('#orbText').textContent = 'Prêt';
+    $('#exoPhase').textContent = 'Prêt';
+    // effet sur le pouls : la première minute face à la dernière
+    const p = S.coh.pouls || [], t0 = p[0]?.t ?? 0, t1 = p.at(-1)?.t ?? 0;
+    const moy = l => (l.length ? Math.round(l.reduce((a, x) => a + x.bpm, 0) / l.length) : null);
+    const avant = moy(p.filter(x => x.t < t0 + 60)), apres = moy(p.filter(x => x.t > t1 - 60));
+    $('#exoResultat').textContent = t1 - t0 >= 90 && avant && apres
+      ? `Ton pouls : ${avant} bpm au début, ${apres} bpm à la fin (${apres - avant > 0 ? '+' : ''}${apres - avant}).` : '';
+  }
 }
 function amplitudeCoh() {
-  const cur = Math.floor((performance.now() - S.coh.debut) / RESPI_MS);
+  const cycle = dureeCycle(EXOS[S.coh.id] ?? EXOS.coherence);
+  const cur = Math.floor((performance.now() - S.coh.debut) / cycle);
   const finis = Object.entries(S.coh.cycles).filter(([k]) => +k < cur).map(([, c]) => c.max - c.min);
   return finis.length ? finis.reduce((a, b) => a + b, 0) / finis.length : null;
 }
 function dessinerOrbe() {
   if (!S.coh.on) { $('#orb').style.transform = 'scale(.55)'; return; }
-  const p = ((performance.now() - S.coh.debut) % RESPI_MS) / RESPI_MS, inspire = p < .5;
-  const k = inspire ? p * 2 : 1 - (p - .5) * 2, e = .5 - .5 * Math.cos(Math.PI * k);
-  $('#orb').style.transform = `scale(${.55 + .45 * e})`;
-  $('#orbText').textContent = (inspire ? 'Inspire ' : 'Expire ') + Math.ceil((inspire ? .5 - p : 1 - p) * RESPI_MS / 1000);
+  const ph = phaseExo(EXOS[S.coh.id] ?? EXOS.coherence, performance.now() - S.coh.debut);
+  $('#orb').style.transform = `scale(${.55 + .45 * ph.volume})`;
+  // le cercle : le compte à rebours ; à côté, la consigne en grand
+  $('#orbText').textContent = Math.max(1, Math.ceil(ph.reste));
+  $('#exoPhase').textContent = ph.nom;
 }
 
 /* ---------- Tracé des 2 dernières minutes ---------- */
@@ -400,10 +464,15 @@ export function initLive(opts) {
   $('#btnTous').hidden = matchMedia('(pointer: coarse)').matches;   // sur iPhone, « Chercher » montre déjà tout
   addEventListener('pagehide', () => liberer('page fermée'));
   $('#btnCoh').onclick = basculerCoh;
+  $('#exos').onclick = e => { const b = e.target.closest('[data-exo]'); if (b) choisirExo(b.dataset.exo, EXOS[b.dataset.exo].duree); };
+  $('#exoDurees').onclick = e => { const b = e.target.closest('[data-duree-exo]'); if (b) choisirExo(S.coh.id, +b.dataset.dureeExo); };
+  choisirExo('coherence', 5);
+  // La connexion reste ouverte tant que l'app l'est (le direct continue au retour) ; seule la fermeture de la page
+  // libère le bracelet. Au retour, l'écran est de nouveau maintenu allumé, ou on se reconnecte si ça a coupé.
   document.addEventListener('visibilitychange', async () => {
-    if (document.visibilityState !== 'visible') return liberer('app quittée');
-    if (S.source === 'ble') try { S.wake = await navigator.wakeLock?.request('screen'); } catch { /* pas de wake lock */ }
-    else reconnexionAuto(S.libere);
+    if (document.visibilityState !== 'visible') return;
+    if (S.source === 'ble') garderEcran();
+    else reconnexionAuto(!!S.appareilOk || S.libere);
   });
   reconnexionAuto();
 
@@ -422,7 +491,7 @@ export function initLive(opts) {
         dernierPouls('deconnecte');
       }
     }
-    if (!$('#vue-coach').hidden) dessinerOrbe();
+    if (!$('#vue-detente').hidden) dessinerOrbe();
     requestAnimationFrame(boucle);
   })();
 }

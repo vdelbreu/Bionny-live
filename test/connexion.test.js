@@ -1,7 +1,7 @@
 // Faux bracelet Web Bluetooth qui répond au protocole Colmi : teste l'enchaînement de connexion.js sans matériel.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ouvrir, synchroniser, fermer, mode, demarrerDirect, arreterDirect, journal, lireReveils, ecrireReveils, mettreALHeure, vibrer } from '../js/connexion.js';
+import { ouvrir, synchroniser, fermer, mode, demarrerDirect, arreterDirect, journal, lireReveils, ecrireReveils, mettreALHeure, vibrer, DELAIS_DIRECT } from '../js/connexion.js';
 import { UART, UART_ECRITURE, UART_NOTIF, V2, V2_ECRITURE, V2_NOTIF, paquetGros } from '../js/bracelet.js';
 import { nuits, fusionner, vide } from '../js/sante.js';
 
@@ -20,6 +20,7 @@ function fauxBracelet({ muetSur = [], sansReponse = false } = {}) {
     if (muetSur.includes(p[0])) return;
     if (p[0] === 0x03) v1(p16(0x03, 81, 0));
     if (p[0] === 0x69 && p[2] === 1) { v1(p16(0x69, 1, 2, 0)); v1(p16(0x69, 1, 0, 0)); v1(p16(0x69, 1, 0, 64)); }   // préchauffage puis une valeur
+    if (p[0] === 0x1e && p[1] === 0x01) { v1(p16(0x1e, 0)); v1(p16(0x1e, 71)); v1(p16(0x1e, 72)); }   // continu : 0 puis une valeur par seconde
     if (p[0] === 0x15) {
       v1(p16(0x15, 0, 3, 5));
       v1(p16(0x15, 1, 0, 0, 0, 0, 58, 57, 56, 55, 54, 53, 52, 51, 50));
@@ -120,12 +121,28 @@ test("une demande sans réponse n'arrête pas la synchronisation (attente puis s
   fermer();
 });
 
-test('mesure en direct : valeurs nulles et code 2 ignorés, la vraie valeur arrive, tout est journalisé', async () => {
-  const mesures = [], etats = [];
-  await ouvrir(fauxBracelet(), { mesure: b => mesures.push(b), contact() {}, batterie() {}, direct: d => etats.push(d.erreur) });
+test('pouls en continu : 0x1e d\'abord, valeurs reçues sans fin, arrêt propre', async () => {
+  const mesures = [];
+  await ouvrir(fauxBracelet(), { mesure: b => mesures.push(b), contact() {}, batterie() {} });
   demarrerDirect();
   await new Promise(r => setTimeout(r, 60));
   arreterDirect();
+  assert.deepEqual(mesures, [71, 72]);                       // le 0 initial est ignoré
+  assert.match(journal(), /→ v1 1e 01/);
+  assert.match(journal(), /→ v1 1e 02/);
+  assert.doesNotMatch(journal().split('pouls en continu : démarrage').at(-1), /→ v1 69/);
+  fermer();
+});
+
+test('mesure en direct : sans réponse au continu, mesures ponctuelles ; valeurs nulles et code 2 ignorés', async () => {
+  const mesures = [], etats = [], essai = DELAIS_DIRECT.essai;
+  DELAIS_DIRECT.essai = 100;
+  await ouvrir(fauxBracelet({ muetSur: [0x1e] }), { mesure: b => mesures.push(b), contact() {}, batterie() {}, direct: d => etats.push(d.erreur) });
+  demarrerDirect();
+  await new Promise(r => setTimeout(r, 1300));
+  arreterDirect();
+  DELAIS_DIRECT.essai = essai;
+  assert.match(journal(), /pouls en continu non géré/);
   assert.deepEqual(mesures, [64]);
   assert.deepEqual(etats, [2, 0]);
   assert.match(journal(), /→ v1 69 01 01/);
