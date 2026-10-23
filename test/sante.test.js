@@ -180,16 +180,15 @@ function nuitReveil({ pouls = [], synchro = null, reveils = {} } = {}) {
   return { ...vide(), sommeil: [{ s: t0, e: fin, k: 'core' }], fc, synchros: synchro ? [synchro] : [], reveils };
 }
 
-test('réveil au pouls : une hausse qui dure avance le réveil, un pic isolé non', () => {
+test("nuits : l'heure de réveil reste celle du bracelet, même si le pouls remonte avant (comme l'app Bionny)", () => {
   const d = nuitReveil({ pouls: [['08:00', 75], ['08:05', 72]] });
   const n = nuits(d)[0];
-  assert.equal(n.finSource, 'pouls');
-  assert.equal(new Date(n.fin).getHours() * 60 + new Date(n.fin).getMinutes(), 8 * 60);
-  assert.equal(new Date(n.finBracelet).getMinutes(), 10);
-  assert.equal(n.tst, 8 * H);
-  const pic = nuits(nuitReveil({ pouls: [['07:30', 85], ['07:35', 55]] }))[0];
-  assert.equal(pic.finSource, 'bracelet');                       // micro-réveil : rien ne change
-  assert.equal(reveilAuPouls(pic, []), null);
+  assert.equal(n.finSource, 'bracelet');
+  assert.equal(n.fin, n.finBracelet);
+  assert.equal(new Date(n.fin).getMinutes(), 10);                // 8 h 10, comme le bracelet
+  // la détection au pouls existe toujours, mais n'est plus appliquée
+  assert.equal(new Date(reveilAuPouls(n, d.fc)).getHours(), 8);
+  assert.equal(reveilAuPouls(nuits(nuitReveil({ pouls: [['07:30', 85], ['07:35', 55]] }))[0], []), null);
 });
 
 test('réveil corrigé par toi : il passe avant le pouls, et peut aussi prolonger la nuit', () => {

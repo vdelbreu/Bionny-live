@@ -23,6 +23,12 @@
       for (let i = 0; i < o.length; i += 20) emettre(o.slice(i, i + 20));
     }
     if (p[0] === 0x03) emettre(p16(0x03, 81, 0));
+    // mesures automatiques (pouls 0x16, oxygène 0x2c, stress 0x36, variabilité 0x38) : actives, sauf si mesuresCoupees
+    if ([0x16, 0x2c, 0x36, 0x38].includes(p[0]) && p[1] === 0x01) {
+      const actif = !etat.mesuresCoupees || (etat.rallumees || []).includes(p[0]);
+      emettre(p16(p[0], 0x01, actif ? 0x01 : (p[0] === 0x16 ? 0x02 : 0x00), p[0] === 0x16 ? (actif ? 5 : 0) : 0));
+    }
+    if ([0x16, 0x2c, 0x36, 0x38].includes(p[0]) && p[1] === 0x02) { (etat.rallumees ||= []).push(p[0]); emettre(p16(p[0], 0x02)); }
     if (p[0] === 0x69 && p[2] === 1) emettre(p16(0x69, 1, 0, 64));
     // pouls en continu : une valeur par seconde jusqu'à l'arrêt (1e 02) ou la déconnexion
     if (p[0] === 0x1e && p[1] === 0x01 && !etat.continu) etat.continu = setInterval(() => { if (appareil.gatt.connected) emettre(p16(0x1e, 66 + Math.round(Math.random() * 4))); }, 1000);

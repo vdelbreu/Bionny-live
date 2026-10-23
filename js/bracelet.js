@@ -247,3 +247,19 @@ export function lireReveils(o) {
   }
   return out;
 }
+
+/* ---------- Mesures automatiques du bracelet ---------- */
+// Pouls toutes les N minutes (0x16), oxygène (0x2c), stress (0x36), variabilité (0x38), formats Gadgetbridge.
+// Lecture [cmd, 01] → [cmd, 01, actif (1 = oui), minutes pour le pouls] ; écriture [cmd, 02, …].
+// Si elles sont coupées, le bracelet n'enregistre presque plus rien : ni pouls, ni sommeil fiable.
+export const MESURES_AUTO = { pouls: 0x16, oxygene: 0x2c, stress: 0x36, variabilite: 0x38 };
+export const INTERVALLE_POULS = 5;   // minutes, comme l'app Bionny
+export const demandesMesures = {
+  lire: cmd => paquet(cmd, [0x01]),
+  pouls: minutes => paquet(0x16, [0x02, minutes > 0 ? 0x01 : 0x02, minutes]),
+  activer: cmd => paquet(cmd, [0x02, 0x01]),
+};
+export function lireMesureAuto(p) {
+  if (!Object.values(MESURES_AUTO).includes(p[0]) || p[1] !== 0x01) return null;
+  return { cmd: p[0], actif: p[2] === 0x01, minutes: p[0] === 0x16 ? p[3] : null };
+}

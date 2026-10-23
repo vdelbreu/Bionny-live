@@ -23,10 +23,11 @@ await attendre(2500);
 ok('pouls en continu affiché', /^\d{2,3}/.test(await p.texte('#bpm') || '') && (await ble()).ecrits.includes('1e 01'), await p.texte('#bpm'));
 await visibilite('hidden');
 b = await ble();
-ok('app quittée : connexion gardée', b.deconnexions === 0 && (await puce()).startsWith('Connecté'), await etat());
-await visibilite('visible'); await attendre(1500);
+ok('app quittée : connexion gardée, pouls en continu arrêté dans le bracelet', b.deconnexions === 0 && (await puce()).startsWith('Connecté') && b.ecrits.at(-1) === '1e 02', await etat());
+await visibilite('visible'); await attendre(2500);
 b = await ble();
-ok('retour : toujours connecté, le direct continue', b.connexions === 1 && (await puce()).startsWith('Connecté') && /^\d{2,3}/.test(await p.texte('#bpm') || ''), await etat());
+ok('retour : toujours connecté, le pouls en continu repart', b.connexions === 1 && (await puce()).startsWith('Connecté') && b.ecrits.filter(x => x === '1e 01').length >= 2 && /^\d{2,3}/.test(await p.texte('#bpm') || ''), await etat());
+ok('mesures automatiques lues à la connexion', ['16 01', '2c 01', '36 01', '38 01'].every(x => b.ecrits.includes(x)) && !b.ecrits.includes('16 02'), b.ecrits.filter(x => /^(16|2c|36|38) /.test(x)).join(' | '));
 
 await p.clic('#btnConnect'); await attendre(500);
 await p.clic('#btnConnect'); await attendre(1500);

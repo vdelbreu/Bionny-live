@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   paquet, secondesMurales, minuitLocal, demandes, lireDirect, lireBatterie,
   CollecteFc, CollecteActivite, CollecteVfc, CollecteGros, lireSommeil, lireSpo2,
-  crc16Modbus, paquetGros, paquetHeure, demandesReglages, lireReveils,
+  crc16Modbus, paquetGros, paquetHeure, demandesReglages, lireReveils, demandesMesures, lireMesureAuto, MESURES_AUTO,
 } from '../js/bracelet.js';
 
 const MIN = 60e3;
@@ -152,4 +152,14 @@ test('réveils : écriture puis relecture donnent la même liste', () => {
 
 test('vibreur : commande « trouver l\'appareil »', () => {
   assert.deepEqual([...demandesReglages.vibrer().slice(0, 3)], [0x50, 0x55, 0xaa]);
+});
+
+test('mesures automatiques : lecture, réponse, réactivation du pouls toutes les 5 min', () => {
+  assert.deepEqual([...demandesMesures.lire(MESURES_AUTO.pouls).slice(0, 2)], [0x16, 0x01]);
+  assert.deepEqual([...demandesMesures.pouls(5).slice(0, 4)], [0x16, 0x02, 0x01, 5]);
+  assert.deepEqual([...demandesMesures.activer(MESURES_AUTO.stress).slice(0, 3)], [0x36, 0x02, 0x01]);
+  assert.deepEqual(lireMesureAuto(p16(0x16, 0x01, 0x02, 0)), { cmd: 0x16, actif: false, minutes: 0 });
+  assert.deepEqual(lireMesureAuto(p16(0x2c, 0x01, 0x01)), { cmd: 0x2c, actif: true, minutes: null });
+  assert.equal(lireMesureAuto(p16(0x16, 0x02)), null);           // accusé d'écriture
+  assert.equal(lireMesureAuto(p16(0x15, 0x01)), null);
 });

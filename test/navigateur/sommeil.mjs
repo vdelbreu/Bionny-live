@@ -22,7 +22,7 @@ await p.aller('/index.html');
 
 ok('tuile : sieste à confirmer signalée', /sieste à confirmer/.test(await texte('[data-fiche="sommeil"] .tuile-sous')), await texte('[data-fiche="sommeil"] .tuile-sous'));
 await clic('[data-fiche="sommeil"]'); await attendre(300);
-ok('fiche : réveil corrigé au pouls', /ton pouls est remonté à 8\sh\s00/.test(await texte('#ficheCorps .note') || ''), await texte('#ficheCorps .note'));
+ok('fiche : réveil du bracelet gardé tel quel (8 h 10)', /^08:10$/.test(await js(`document.querySelector('#reveilNuit').value`)) && !/pouls est remonté/.test(await texte('#ficheCorps') || ''), await js(`document.querySelector('#reveilNuit').value`));
 const nuitAvant = await texte('#ficheCorps .tuiles strong');
 ok('fiche : sieste proposée', /Sieste de/.test(await texte('.sieste-proposee') || ''), await texte('.sieste-proposee span'));
 await p.photo('sommeil-fiche');
@@ -34,7 +34,7 @@ await p.saisir('#reveilNuit', '07:30'); await attendre(300);
 ok('réveil corrigé par toi', /Corrigé par toi/.test(await texte('#ficheCorps .note') || '') && (await texte('#ficheCorps .tuiles strong')) !== nuitAvant,
   `nuit ${nuitAvant} → ${await texte('#ficheCorps .tuiles strong')}`);
 await clic('[data-action="reveil-retablir"]'); await attendre(300);
-ok('rétablir : retour au pouls', /ton pouls est remonté/.test(await texte('#ficheCorps .note') || ''));
+ok('rétablir : retour à l’heure du bracelet', (await js(`document.querySelector('#reveilNuit').value`)) === '08:10');
 
 await js(`document.querySelector('#formSieste').open = true`);
 await clic('#formSieste [data-duree="20"]');

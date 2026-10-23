@@ -6,7 +6,7 @@ import { fcMaxTanaka } from './coeur.js';
 import { journees, fiabilite } from './stats.js';
 import { seanceDeclaree, planSommeil, heure, matinSuivant, JOURS } from './coach.js';
 import { initLive, majAge, synchroniserBracelet, connecterBracelet, chercherBracelet, enDirect, lancerDemo } from './live.js';
-import { journal, mettreALHeure, lireReveils, ecrireReveils, vibrer } from './connexion.js';
+import { journal, mettreALHeure, lireReveils, ecrireReveils, vibrer, verifierMesuresAuto } from './connexion.js';
 import { reveilsVoulus, memesReveils, rappelsImportes, tropDeReveils, joursCourts } from './reveil.js';
 import { $, nf, toast } from './ui.js';
 import { rendreJour, brancherFiches } from './vues/jour.js';
@@ -291,7 +291,7 @@ async function restaurer(fichier) {
 /* ---------- Réveil et rappels du bracelet ---------- */
 
 // État affiché : à jour, en attente de connexion, ou modèle qui ne répond pas aux réveils
-let etatReveils = '', envoiReveils = null, reveilsNonGeres = false;
+let etatReveils = '', envoiReveils = null, reveilsNonGeres = false, etatMesures = null;
 function modifierVibreur(f) {
   f(R.vibreur);
   reveilsNonGeres = false;   // tu viens de changer quelque chose : on réessaie
@@ -350,6 +350,16 @@ function rendreReveils() {
   $('#aideNotifs').hidden = !R.notifs;
 }
 
+// Mesures automatiques du bracelet, vues à la dernière connexion
+const NOMS_MESURES = { pouls: 'pouls', oxygene: 'oxygène', stress: 'stress', variabilite: 'variabilité' };
+function mesuresTexte() {
+  if (!etatMesures) return 'Mesures automatiques : vérifiées à chaque connexion.';
+  const a = etatMesures.apres, coupees = Object.entries(a).filter(([, r]) => !r.actif).map(([k]) => NOMS_MESURES[k]);
+  if (!Object.keys(a).length) return "Mesures automatiques : le bracelet n'a pas répondu.";
+  return (etatMesures.rallumees.length ? `Mesures automatiques rallumées (${etatMesures.rallumees.map(k => NOMS_MESURES[k]).join(', ')}). ` : '')
+    + (coupees.length ? `Toujours coupées : ${coupees.join(', ')}.` : `Mesures automatiques actives${a.pouls?.minutes ? `, pouls toutes les ${a.pouls.minutes} min` : ''}.`);
+}
+
 /* ---------- Réglages ---------- */
 
 function rendreReglages() {
@@ -362,6 +372,7 @@ function rendreReglages() {
   $('#fcmaxMesuree').placeholder = String(fcMaxTanaka(R.age));
   $('#fcmaxNote').textContent = R.fcmaxMesuree ? 'ta valeur mesurée' : `vide : estimée à ${fcMaxTanaka(R.age)} bpm`;
   $('#urlApp').textContent = location.origin + location.pathname;
+  $('#etatMesures').textContent = mesuresTexte();
   $('#etatSante').textContent = R.santeJusqua ? `Pouls envoyé jusqu'au ${dateSante(R.santeJusqua).replace(' ', ' à ')}.` : 'Jamais envoyé.';
   const date = t => `le ${new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} à ${hm(t)}`;
   $('#etatBracelet').textContent = (enDirect() ? 'Connecté. ' : 'Pas connecté. ')
@@ -411,7 +422,12 @@ function demarrer() {
     fcMax: fcMaxCourante, toast, importer: importerBracelet, jours: joursASynchroniser, aller: montrerVue,
     dernierReleve: () => (D.exemple ? null : D.fc.at(-1) ?? null),
     synchroUtile: () => D.exemple || !D.majBracelet || Date.now() - D.majBracelet > 30 * 60e3,
-    apresConnexion: async () => { await mettreALHeure(); await synchroniserReveils(); },
+    apresConnexion: async () => {
+      etatMesures = await verifierMesuresAuto();
+      if (vue === 'reglages') rendreReglages();
+      await mettreALHeure();
+      await synchroniserReveils();
+    },
     activite: a => {
       pasDirect = { cle: cleJour(Date.now()), pas: a.pas };
       const el = $('#valPas'), pas = nf(Math.max(D.pas[pasDirect.cle] ?? 0, a.pas));

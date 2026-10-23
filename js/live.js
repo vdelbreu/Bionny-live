@@ -469,9 +469,14 @@ export function initLive(opts) {
   choisirExo('coherence', 5);
   // La connexion reste ouverte tant que l'app l'est (le direct continue au retour) ; seule la fermeture de la page
   // libère le bracelet. Au retour, l'écran est de nouveau maintenu allumé, ou on se reconnecte si ça a coupé.
+  // Le pouls en continu ne reste jamais allumé dans le bracelet quand on n'est pas sur l'app : il s'arrête dès qu'on
+  // la quitte (sinon le bracelet peut cesser ses mesures automatiques et son suivi du sommeil) et reprend au retour.
   document.addEventListener('visibilitychange', async () => {
-    if (document.visibilityState !== 'visible') return;
-    if (S.source === 'ble') garderEcran();
+    if (document.visibilityState !== 'visible') {
+      if (S.source === 'ble' && B.connecte()) { B.arreterDirect(); B.info('pouls en continu arrêté : app quittée'); }
+      return;
+    }
+    if (S.source === 'ble' && B.connecte()) { B.demarrerDirect(); garderEcran(); }
     else reconnexionAuto(!!S.appareilOk || S.libere);
   });
   reconnexionAuto();

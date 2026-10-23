@@ -4,7 +4,7 @@
 # Usage : bash test/navigateur/lancer.sh [parcours connexion ouverture sante sommeil reveils]   (CAPTURES=dossier pour des images)
 cd "$(dirname "$0")" || exit 1
 CHROME="${CHROME:-/c/Program Files/Google/Chrome/Application/chrome.exe}"
-SCENARIOS="${*:-parcours connexion ouverture sante sommeil reveils}"
+SCENARIOS="${*:-parcours connexion ouverture sante sommeil reveils mesures}"
 curl -s -o /dev/null http://127.0.0.1:8765/index.html || { echo "Site non servi sur le port 8765"; exit 1; }
 echec=0
 for s in $SCENARIOS; do

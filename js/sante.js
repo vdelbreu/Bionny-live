@@ -324,8 +324,9 @@ export function reveilAuPouls(n, fc) {
   return null;
 }
 
-// Nuits, datées par le jour du réveil. L'heure de réveil retenue : la tienne si tu l'as corrigée, sinon celle de ton
-// pouls quand il dit plus tôt, sinon celle du bracelet. finProvisoire : le bracelet a arrêté la nuit à une synchro.
+// Nuits, datées par le jour du réveil, telles que le bracelet les a détectées (comme l'app Bionny). Seule exception :
+// l'heure de réveil que tu corriges toi-même. finProvisoire : le bracelet a arrêté la nuit au moment d'une synchro.
+// (reveilAuPouls reste disponible mais n'est plus appliqué : à la demande de l'utilisateur, on garde le bracelet.)
 export function nuits(d) {
   const parJour = new Map();
   for (const g of grappesSommeil(d)) {
@@ -336,13 +337,10 @@ export function nuits(d) {
   }
   return [...parJour.entries()].map(([cle, brute]) => {
     let n = brute, finSource = 'bracelet';
-    const toi = d.reveils?.[cle], pouls = reveilAuPouls(brute, d.fc || []);
+    const toi = d.reveils?.[cle];
     if (Number.isFinite(toi) && toi > brute.debut + H && toi < brute.fin + 3 * H) {
       n = analyseNuit(toi < brute.finLit ? couperA(brute.segs, toi) : prolongerA(brute.segs, toi));
       finSource = 'toi';
-    } else if (pouls != null && pouls < brute.fin - 5 * MIN) {
-      n = analyseNuit(couperA(brute.segs, pouls));
-      finSource = 'pouls';
     }
     const finProvisoire = finSource === 'bracelet' && (d.synchros || []).some(t => t - brute.fin >= -2 * MIN && t - brute.fin <= 10 * MIN);
     const vfc = n.tst ? dans(d.vfc || [], n.debut - H, n.fin + 2 * H) : [];

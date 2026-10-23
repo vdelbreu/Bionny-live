@@ -1,7 +1,7 @@
 // Faux bracelet Web Bluetooth qui répond au protocole Colmi : teste l'enchaînement de connexion.js sans matériel.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ouvrir, synchroniser, fermer, mode, demarrerDirect, arreterDirect, journal, lireReveils, ecrireReveils, mettreALHeure, vibrer, DELAIS_DIRECT } from '../js/connexion.js';
+import { ouvrir, synchroniser, fermer, mode, demarrerDirect, arreterDirect, journal, lireReveils, ecrireReveils, mettreALHeure, vibrer, DELAIS_DIRECT, verifierMesuresAuto } from '../js/connexion.js';
 import { UART, UART_ECRITURE, UART_NOTIF, V2, V2_ECRITURE, V2_NOTIF, paquetGros } from '../js/bracelet.js';
 import { nuits, fusionner, vide } from '../js/sante.js';
 
@@ -9,7 +9,9 @@ const p16 = (...o) => { const p = new Uint8Array(16); p.set(o); return p; };
 const bcd = n => ((n / 10 | 0) << 4) | (n % 10);
 
 // sansReponse : le canal v2 n'accepte que l'écriture sans réponse, les longues trames arrivent par morceaux de 20 octets
-function fauxBracelet({ muetSur = [], sansReponse = false } = {}) {
+function fauxBracelet({ muetSur = [], sansReponse = false, mesuresCoupees = false } = {}) {
+  // mesures automatiques : [actif, minutes] par commande (pouls 0x16, oxygène 0x2c, stress 0x36, variabilité 0x38)
+  const mesures = { 0x16: [!mesuresCoupees, mesuresCoupees ? 0 : 5], 0x2c: [!mesuresCoupees], 0x36: [!mesuresCoupees], 0x38: [true] };
   let reveils = [0x01, 0], tampon = [];   // liste en mémoire (charge de réponse à la lecture) ; trame v2 en cours
   const ecoutes = { [UART_NOTIF]: [], [V2_NOTIF]: [] };
   const emettre = (uuid, octets) => setTimeout(() => {
@@ -20,6 +22,8 @@ function fauxBracelet({ muetSur = [], sansReponse = false } = {}) {
     if (muetSur.includes(p[0])) return;
     if (p[0] === 0x03) v1(p16(0x03, 81, 0));
     if (p[0] === 0x69 && p[2] === 1) { v1(p16(0x69, 1, 2, 0)); v1(p16(0x69, 1, 0, 0)); v1(p16(0x69, 1, 0, 64)); }   // préchauffage puis une valeur
+    if (mesures[p[0]] && p[1] === 0x01) v1(p16(p[0], 0x01, mesures[p[0]][0] ? 0x01 : (p[0] === 0x16 ? 0x02 : 0x00), mesures[p[0]][1] ?? 0));
+    if (mesures[p[0]] && p[1] === 0x02) { mesures[p[0]] = [p[2] === 0x01, p[3]]; v1(p16(p[0], 0x02)); }
     if (p[0] === 0x1e && p[1] === 0x01) { v1(p16(0x1e, 0)); v1(p16(0x1e, 71)); v1(p16(0x1e, 72)); }   // continu : 0 puis une valeur par seconde
     if (p[0] === 0x15) {
       v1(p16(0x15, 0, 3, 5));
@@ -174,5 +178,24 @@ test('réveils : un bracelet qui ne répond pas donne null, sans bloquer', async
   await ouvrir(fauxBracelet({ muetSur: [0xbc] }), { mesure() {}, contact() {}, batterie() {} });
   assert.equal(await lireReveils(), null);
   assert.equal(await ecrireReveils([]), false);
+  fermer();
+});
+
+test('mesures automatiques coupées : relues, rallumées (pouls toutes les 5 min), vérifiées', async () => {
+  await ouvrir(fauxBracelet({ mesuresCoupees: true }), { mesure() {}, contact() {}, batterie() {} });
+  const r = await verifierMesuresAuto();
+  assert.equal(r.avant.pouls.actif, false);
+  assert.deepEqual(r.rallumees, ['pouls', 'oxygene', 'stress']);
+  assert.ok(Object.values(r.apres).every(x => x.actif));
+  assert.equal(r.apres.pouls.minutes, 5);
+  assert.match(journal(), /→ v1 16 02 01 05/);
+  fermer();
+});
+
+test('mesures automatiques déjà actives : rien n’est écrit', async () => {
+  await ouvrir(fauxBracelet(), { mesure() {}, contact() {}, batterie() {} });
+  const r = await verifierMesuresAuto();
+  assert.deepEqual(r.rallumees, []);
+  assert.doesNotMatch(journal().split('mesures automatiques :').at(-1), /→ v1 (16|2c|36|38) 02/);
   fermer();
 });

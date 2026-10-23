@@ -4,7 +4,7 @@
 import {
   UART, UART_ECRITURE, UART_NOTIF, V2, V2_ECRITURE, V2_NOTIF, demandes, minuitLocal,
   lireDirect, lireContinu, lireBatterie, lireActiviteDirecte, CollecteFc, CollecteActivite, CollecteVfc, CollecteStress, CollecteGros, lireSommeil, lireSpo2,
-  demandesReglages, lireReveils as decoderReveils,
+  demandesReglages, lireReveils as decoderReveils, MESURES_AUTO, INTERVALLE_POULS, demandesMesures, lireMesureAuto,
 } from './bracelet.js';
 import { parseHR } from './coeur.js';
 
@@ -106,6 +106,45 @@ export async function ouvrir(appareil, rappels) {
   });
   envoyer(demandes.batterie()).catch(() => {});
   return E.mode;
+}
+
+/* ---------- Mesures automatiques : vérifiées et rallumées à chaque connexion ---------- */
+
+// Lit les 4 réglages ; ceux qui ne répondent pas restent absents
+function lireMesuresAuto() {
+  return new Promise(resolve => {
+    const lus = {}, noms = Object.entries(MESURES_AUTO);
+    const fin = setTimeout(() => { arreter(); resolve(lus); }, 2500);
+    const arreter = ecouter((p, canal) => {
+      if (canal !== 'v1') return;
+      const r = lireMesureAuto(p);
+      if (!r) return;
+      lus[noms.find(([, c]) => c === r.cmd)[0]] = r;
+      if (Object.keys(lus).length === noms.length) { clearTimeout(fin); arreter(); resolve(lus); }
+    });
+    for (const [, c] of noms) envoyer(demandesMesures.lire(c)).catch(() => {});
+  });
+}
+const resumeMesures = lus => Object.entries(lus).map(([k, r]) => `${k} ${r.actif ? 'oui' : 'NON'}${r.minutes != null ? ` (${r.minutes} min)` : ''}`).join(', ') || 'pas de réponse';
+// Sans ses mesures automatiques, le bracelet n'enregistre presque plus rien (ni pouls, ni sommeil fiable) : on rallume
+// celles qui sont coupées, pouls toutes les 5 min comme l'app Bionny, puis on relit pour vérifier.
+export function verifierMesuresAuto() {
+  if (E.mode !== 'colmi') return Promise.resolve(null);
+  return sansDirect(async () => {
+    const avant = await lireMesuresAuto();
+    info(`mesures automatiques : ${resumeMesures(avant)}`);
+    const rallumees = [];
+    if (avant.pouls && (!avant.pouls.actif || avant.pouls.minutes !== INTERVALLE_POULS)) {
+      await envoyer(demandesMesures.pouls(INTERVALLE_POULS)); rallumees.push('pouls');
+    }
+    for (const k of ['oxygene', 'stress', 'variabilite']) {
+      if (avant[k] && !avant[k].actif) { await envoyer(demandesMesures.activer(MESURES_AUTO[k])); rallumees.push(k); }
+    }
+    if (!rallumees.length) return { avant, apres: avant, rallumees };
+    const apres = await lireMesuresAuto();
+    info(`mesures automatiques rallumées (${rallumees.join(', ')}) : ${resumeMesures(apres)}`);
+    return { avant, apres, rallumees };
+  });
 }
 
 /* ---------- Écrits dans le bracelet : heure, vibreur, réveils ---------- */
