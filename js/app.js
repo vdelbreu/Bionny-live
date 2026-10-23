@@ -117,6 +117,14 @@ function contexte() {
   return { D, R, maintenant: Date.now(), ns: cache.ns, J: cache.J, fiab: cache.fiab, fcmax: fcMaxCourante(), pasDirect, connecte: enDirect() };
 }
 
+// Synchro automatique : à l'ouverture, au retour sur l'app et toutes les 10 min tant que le bracelet est connecté
+const SYNCHRO_MS = 10 * 60e3;
+function synchroSiBesoin() {
+  if (!enDirect() || D.exemple || document.visibilityState !== 'visible') return;
+  if (D.majBracelet && Date.now() - D.majBracelet < SYNCHRO_MS) return;
+  synchroniserBracelet().catch(() => {});
+}
+
 /* ---------- Imports ---------- */
 
 // Texte du raccourci Santé (#d=), gardé pour un appareil qui écrit dans Santé
@@ -421,7 +429,7 @@ function demarrer() {
   initLive({
     fcMax: fcMaxCourante, toast, importer: importerBracelet, jours: joursASynchroniser, aller: montrerVue,
     dernierReleve: () => (D.exemple ? null : D.fc.at(-1) ?? null),
-    synchroUtile: () => D.exemple || !D.majBracelet || Date.now() - D.majBracelet > 30 * 60e3,
+    synchroUtile: () => D.exemple || !D.majBracelet || Date.now() - D.majBracelet > SYNCHRO_MS,
     apresConnexion: async () => {
       etatMesures = await verifierMesuresAuto();
       if (vue === 'reglages') rendreReglages();
@@ -538,8 +546,10 @@ function demarrer() {
     clearTimeout(attente);
     attente = setTimeout(() => { if (innerWidth !== largeur) { largeur = innerWidth; rendre(); } }, 150);
   });
-  // passé minuit, « aujourd'hui » change : on redessine en revenant sur l'app
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') rendre(); });
+  // passé minuit, « aujourd'hui » change : on redessine en revenant sur l'app ; et on resynchronise si besoin
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { rendre(); synchroSiBesoin(); } });
+  // bracelet connecté et app ouverte : synchro discrète toutes les 10 min, pour voir les mesures les plus récentes
+  setInterval(synchroSiBesoin, 60e3);
 
   // On ouvre toujours sur Aujourd'hui : l'adresse garde le dernier onglet (#reglages…), Bluefy la rouvrirait telle quelle
   const brut = lireHash(location.hash);

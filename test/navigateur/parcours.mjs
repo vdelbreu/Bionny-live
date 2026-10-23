@@ -65,6 +65,19 @@ for (const o of ['sommeil', 'activite', 'coeur', 'oxygene']) {
   await clic(`.sous-onglets [data-onglet="${o}"]`); await attendre(300);
   ok(`données ${o}`, (await js(`document.querySelector('.sous-onglets [data-onglet="${o}"]').getAttribute('aria-selected')`)) === 'true' && !!(await js(`document.querySelector('#vue-donnees svg')`)));
 }
+// Cœur : zoom sur la dernière heure, mesures visibles une à une, retour en arrière d'une heure
+await clic('.sous-onglets [data-onglet="coeur"]'); await attendre(300);
+await clic('[data-zoom="1"]'); await attendre(300);
+const axe = await js(`[...document.querySelectorAll('#vue-donnees svg .axe-txt')].map(t => t.textContent).join(' ')`);
+ok('cœur : zoom 1 h, heures et minutes sur l’axe', /\d{2}:\d{2}/.test(axe), axe.slice(-60));
+ok('cœur : chaque mesure est un point', (await js(`document.querySelectorAll('#vue-donnees circle.marqueur').length`)) >= 10);
+ok('cœur : 6 dernières mesures listées', (await js(`document.querySelectorAll('.dernieres li').length`)) === 6, await texte('.dernieres .label'));
+const avantPan = await texte('.dernieres .label');
+await clic('[data-decaler="-1"]'); await attendre(300);
+ok('cœur : ‹ remonte d’une heure', (await texte('.dernieres .label')) !== avantPan, `${avantPan} → ${await texte('.dernieres .label')}`);
+await clic('[data-zoom="0"]'); await attendre(300);
+ok('cœur : retour à la journée', (await js(`document.querySelector('[data-zoom="0"]').getAttribute('aria-pressed')`)) === 'true');
+
 await clic('.cal-jour:not([disabled]):not(.vide)'); await attendre(300);
 ok('clic dans le calendrier', !!(await texte('.jour-nav strong')), await texte('.jour-nav strong'));
 await clic('[data-plage="90"]'); await attendre(250);

@@ -460,3 +460,13 @@ label.bouton{cursor:pointer}
 @media (max-width:480px){.onglets{gap:0;padding-left:2px;padding-right:2px}.onglets button{font-size:10.5px;padding:6px 1px;letter-spacing:-.01em}.onglets svg{width:22px;height:22px}}
 .exo-phase{font-size:22px;font-weight:700;line-height:1.2}
 #orbText{font-size:20px}
+
+/* ---------- Zoom de la courbe du pouls, dernières mesures ---------- */
+.zoom{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center}
+.zoom .segment button{min-width:44px}
+.dernieres{display:grid;gap:6px}
+.dernieres ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px}
+.dernieres li{display:flex;align-items:baseline;gap:6px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-variant-numeric:tabular-nums}
+.dernieres li span{color:var(--muted);font-size:13px}
+.dernieres li b{font-size:16px}
+.dernieres li small{color:var(--muted);font-size:12px}

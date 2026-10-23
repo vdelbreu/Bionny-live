@@ -1,5 +1,5 @@
 // Réseau d'abord (toujours la dernière version), cache en secours pour ouvrir l'app hors connexion.
-const CACHE = 'viawrist-v16';
+const CACHE = 'viawrist-v17';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(

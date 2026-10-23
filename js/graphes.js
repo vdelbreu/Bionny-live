@@ -171,8 +171,16 @@ export function courbe(points, { largeur, hauteur = 180, debut, fin, bandes = []
       dernierX = x;
       svg += `<text class="axe-txt" x="${x}" y="${T + ph + 15}" text-anchor="middle">${new Date(points[i].t).getDate()}</text>`;
     }
+  } else if (fin - debut <= 3 * H) {
+    // zoom : une graduation toutes les 15 min (1 h affichée) ou 30 min (2 à 3 h), en heures et minutes
+    const pasMin = fin - debut <= 1.2 * H ? 15 : 30, t0 = new Date(debut);
+    t0.setMinutes(Math.ceil(t0.getMinutes() / pasMin) * pasMin, 0, 0);
+    for (let t = t0.getTime(); t < fin; t += pasMin * MIN) {
+      if (X(t) < G + 16 || X(t) > G + pw - 16) continue;
+      svg += `<text class="axe-txt" x="${X(t)}" y="${T + ph + 15}" text-anchor="middle">${hm(t)}</text>`;
+    }
   } else {
-    const etape = (fin - debut) / H > 14 ? 6 : 3, t0 = new Date(debut); t0.setMinutes(0, 0, 0);
+    const etape = (fin - debut) / H > 14 ? 6 : (fin - debut) / H > 7 ? 3 : 1, t0 = new Date(debut); t0.setMinutes(0, 0, 0);
     for (let t = t0.getTime() + H; t < fin; t += H) {
       const h = new Date(t).getHours();
       if (h % etape) continue;

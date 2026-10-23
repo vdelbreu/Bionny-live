@@ -7,7 +7,9 @@ import { repere, joursPasses, decalerJour } from '../stats.js';
 import { effort, phraseCoeur } from '../coach.js';
 import { $, nf, km, pct, compact, dateCle, tuiles, faceNormale, barreProgression, tableStades, aDesDonnees, placer, dessinerGraphes, nouveauxGraphes } from '../ui.js';
 
-const E = { onglet: 'sommeil', jour: null, plage: 30, mois: null };
+// zoom : 0 = la journée, sinon une fenêtre de N heures qui finit à zoomFin (par défaut, à la dernière mesure)
+const E = { onglet: 'sommeil', jour: null, plage: 30, mois: null, zoom: 0, zoomFin: null };
+const ZOOMS = [[0, 'Journée'], [6, '6 h'], [2, '2 h'], [1, '1 h']];
 
 const ONGLETS = [
   { id: 'sommeil', nom: 'Sommeil', tendance: 'Durée de sommeil', champ: j => j.sommeil, format: v => duree(v) },
@@ -35,8 +37,10 @@ export function brancherDonnees(rafraichir) {
     if (!b || b.disabled || b.dataset.aller || b.dataset.supprimer) return;
     const d = b.dataset;
     if (d.onglet) E.onglet = d.onglet;
-    else if (d.jour) { E.jour = d.jour; E.mois = d.jour.slice(0, 7); }
-    else if (d.navJour) { E.jour = decalerJour(E.jour, +d.navJour); E.mois = E.jour.slice(0, 7); }
+    else if (d.jour) { E.jour = d.jour; E.mois = d.jour.slice(0, 7); E.zoomFin = null; }
+    else if (d.navJour) { E.jour = decalerJour(E.jour, +d.navJour); E.mois = E.jour.slice(0, 7); E.zoomFin = null; }
+    else if (d.zoom) { E.zoom = +d.zoom; E.zoomFin = null; }
+    else if (d.decaler) E.zoomFin = (E.zoomFin ?? +d.fin) + +d.decaler * E.zoom * H;
     else if (d.plage) E.plage = +d.plage;
     else if (d.mois) E.mois = moisDecale(E.mois, +d.mois);
     else return;
@@ -139,8 +143,16 @@ const DETAILS = {
   },
 
   coeur(c, cle) {
-    const j = c.J.get(cle) ?? {}, d0 = debutJour(cle), fin = Math.min(d0 + JOUR, c.maintenant);
-    const pts = dansJour(c.D.fc, cle);
+    const j = c.J.get(cle) ?? {}, d0 = debutJour(cle), finJour = Math.min(d0 + JOUR, c.maintenant);
+    const tous = dansJour(c.D.fc, cle);
+    // fenêtre affichée : la journée, ou les N dernières heures (jusqu'à la dernière mesure), à décaler avec ‹ ›
+    const finDefaut = Math.min(finJour, (tous.at(-1)?.t ?? finJour) + 5 * MIN);
+    const fin = E.zoom ? Math.min(finJour, Math.max(d0 + E.zoom * H, E.zoomFin ?? finDefaut)) : finJour;
+    const debut = E.zoom ? Math.max(d0, fin - E.zoom * H) : d0;
+    const pts = tous.filter(p => p.t >= debut && p.t <= fin);
+    const zoom = `<div class="zoom"><span class="segment">${ZOOMS.map(([h, l]) => `<button class="petit" data-zoom="${h}" aria-pressed="${E.zoom === h}">${l}</button>`).join('')}</span>
+      ${E.zoom ? `<span class="segment"><button class="petit" data-decaler="-1" data-fin="${fin}"${debut <= d0 ? ' disabled' : ''} aria-label="Plus tôt">‹</button><button class="petit" data-decaler="1" data-fin="${fin}"${fin >= finJour ? ' disabled' : ''} aria-label="Plus tard">›</button></span>` : ''}</div>`;
+    const dernieres = pts.slice(-6).reverse();
     if (!pts.length && j.rhr == null) return rien('Pas de relevé de pouls ce jour-là.');
     const r = repere(c.J, cle, x => x.rhr);
     const bandes = c.ns.filter(n => n.tst && n.fin > d0 && n.debut < d0 + JOUR).map(n => ({ s: n.debut, e: n.fin }));
@@ -153,7 +165,11 @@ const DETAILS = {
         j.fc && ['Pouls moyen', `${j.fc.moy}<small>bpm</small>`, `de ${j.fc.min} à ${j.fc.max} sur la journée`],
       ])}
       ${j.rhr != null ? aide(esc(phraseCoeur(j.rhr, r))) : ''}
-      ${pts.length >= 2 ? placer('fcJour', w => courbe(pts, { largeur: w, debut: d0, fin, bandes, unite: 'bpm', label: 'Pouls de la journée' })) : ''}
+      ${tous.length ? zoom : ''}
+      ${pts.length >= 2 ? placer('fcJour', w => courbe(pts, { largeur: w, debut, fin, bandes, unite: 'bpm', marqueurs: pts.length <= 31, label: 'Pouls de la journée' }))
+        : tous.length ? `<p class="note">Pas de mesure entre ${hm(debut)} et ${hm(fin)}.</p>` : ''}
+      ${dernieres.length ? `<div class="dernieres"><span class="label">${E.zoom ? `Dernières mesures, ${hm(debut)} → ${hm(fin)}` : 'Dernières mesures'}</span>
+        <ul>${dernieres.map(p => `<li><span>${hm(p.t)}</span><b>${p.v}</b><small>bpm</small></li>`).join('')}</ul></div>` : ''}
       ${bandes.length ? '<div class="legende"><span><i class="carre bande"></i>Sommeil</span></div>' : ''}`)
       + (j.zones ? panneau(barresZones(j.zones, c.fcmax) + aide("Le temps passé à chaque intensité, d'après un relevé toutes les 5 min environ.")
         + `<details><summary>Valeurs heure par heure</summary><div class="defile"><table><thead><tr><th>Heure</th><th class="droite">Min</th><th class="droite">Moy.</th><th class="droite">Max</th></tr></thead><tbody>${lignes}</tbody></table></div></details>`, 'Intensité de la journée') : '');
