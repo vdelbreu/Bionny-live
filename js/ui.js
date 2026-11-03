@@ -40,6 +40,25 @@ export function faceNormale(v, r, f = x => Math.round(x)) {
   return `${pos} (${f(r.moy)})`;
 }
 
+// D'où viennent les heures d'une nuit : le bracelet vérifié par ton pouls, ou ton pouls quand le bracelet n'a rien
+// noté ou se trompe. Texte brut (à échapper), vide s'il n'y a rien à dire.
+const hh = t => { const d = new Date(t); return `${d.getHours()} h ${String(d.getMinutes()).padStart(2, '0')}`; };
+export function origineNuit(n) {
+  if (n.source === 'pouls') return n.debutBracelet != null
+    ? `Heures prises sur ton pouls : le bracelet plaçait ta nuit de ${hh(n.debutBracelet)} à ${hh(n.finBracelet)}, ton pouls dit que tu étais éveillé. Sans phases, moins précis que le bracelet.`
+    : "Le bracelet n'a pas noté cette nuit : heures prises sur ton pouls. Sans phases, moins précis que le bracelet.";
+  const p = [];
+  if (n.debutSource === 'pouls') p.push(n.debut < n.debutBracelet
+    ? `endormi à ${hh(n.debut)} : ton pouls était déjà celui du sommeil avant ${hh(n.debutBracelet)}, l'heure du bracelet`
+    : `endormi à ${hh(n.debut)} : à ${hh(n.debutBracelet)}, l'heure du bracelet, ton pouls était encore celui de l'éveil`);
+  if (n.finSource === 'pouls') p.push(n.fin > n.finBracelet
+    ? `réveillé à ${hh(n.fin)} : le bracelet a arrêté ta nuit à ${hh(n.finBracelet)} alors que ton pouls restait celui du sommeil`
+    : `réveillé à ${hh(n.fin)} : de là à ${hh(n.finBracelet)}, l'heure du bracelet, ton pouls était celui de l'éveil`);
+  if (p.length) return `Corrigé au pouls, ${p.join(' ; ')}.`;
+  if (n.controle === 'confirmee') return 'Heures du bracelet, confirmées par ton pouls.';
+  return n.tst && n.controle == null ? 'Heures du bracelet, pas assez de relevés de pouls pour les vérifier.' : '';
+}
+
 // Une heure ou une durée ne se coupe pas en fin de ligne (« 7 h » / « 10 ») : espaces insécables
 export const insecable = html => html.replace(/(\d) h (\d)/g, '$1\u00a0h\u00a0$2').replace(/(\d) (min|bpm|pas|%)(?![\w-])/g, '$1\u00a0$2');
 

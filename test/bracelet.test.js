@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   paquet, secondesMurales, minuitLocal, demandes, lireDirect, lireBatterie,
-  CollecteFc, CollecteActivite, CollecteVfc, CollecteGros, lireSommeil, lireSpo2,
+  CollecteFc, CollecteActivite, CollecteVfc, CollecteGros, lireSommeil, entetesSommeil, lireSpo2,
   crc16Modbus, paquetGros, paquetHeure, demandesReglages, lireReveils, demandesMesures, lireMesureAuto, MESURES_AUTO,
 } from '../js/bracelet.js';
 
@@ -162,4 +162,21 @@ test('mesures automatiques : lecture, réponse, réactivation du pouls toutes le
   assert.deepEqual(lireMesureAuto(p16(0x2c, 0x01, 0x01)), { cmd: 0x2c, actif: true, minutes: null });
   assert.equal(lireMesureAuto(p16(0x16, 0x02)), null);           // accusé d'écriture
   assert.equal(lireMesureAuto(p16(0x15, 0x01)), null);
+});
+
+test('sommeil : un stade qui dépasse la fin annoncée est coupé, un jour aux heures impossibles est ignoré', () => {
+  // endormi à 23 h, fin annoncée à 0 h 30 : le stade de 90 min est coupé à 0 h 30, le suivant ignoré
+  const jour = [0, 4 + 2 * 3, 1380 & 0xff, 1380 >> 8, 30, 0, 2, 60, 3, 90, 5, 10];
+  const absurde = [1, 4 + 2, 0xa0, 0x05, 30, 0, 2, 60];      // début 1440 : impossible
+  const donnees = [2, ...jour, ...absurde];
+  const o = [0xbc, 0x27, donnees.length & 0xff, donnees.length >> 8, 0, 0, ...donnees];
+  assert.deepEqual(lireSommeil(o, local(13, 9)), [
+    { s: local(12, 23, 0), e: local(13, 0, 0), k: 'core' },
+    { s: local(13, 0, 0), e: local(13, 0, 30), k: 'deep' },
+  ]);
+});
+
+test('journal : en-têtes des nuits telles que le bracelet les annonce', () => {
+  assert.equal(entetesSommeil(grosSommeil()), 'J-0 23:00→07:00 4 phases');
+  assert.equal(entetesSommeil([0xbc, 0x27, 0, 0, 0, 0]), 'aucune nuit');
 });

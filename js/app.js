@@ -1,5 +1,5 @@
 // ViaWrist : point d'entrée. Stockage, réglages, navigation, imports (bracelet, sauvegarde, raccourci Santé), rendu des vues.
-import { parseImport, fusionner, vide, nuits as calculerNuits, lireHash, cleJour, debutJour, duree, JOUR } from './sante.js';
+import { parseImport, fusionner, vide, nuits as calculerNuits, nuitMuette, lireHash, cleJour, debutJour, duree, JOUR } from './sante.js';
 import { impExemple } from './exemple.js';
 import { initInfobulles, hm } from './graphes.js';
 import { fcMaxTanaka } from './coeur.js';
@@ -388,10 +388,23 @@ function rendreReglages() {
   const controle = (nom, f, unite, attendu, e = '') => !f.assez
     ? `${nom} : pas encore assez de mesures pour vérifier, donc non affiché${e}.`
     : `${nom} : ${f.fiable ? 'affiché' : 'non affiché'}${e}. Pendant ton sommeil ${Math.round(f.nuit)}${unite}, éveillé ${Math.round(f.jour)}${unite} ; lien avec ton pouls ${f.r >= 0 ? '+' : '−'}${Math.abs(f.r).toFixed(2).replace('.', ',')} (${attendu}).`;
+  // nuits des 30 derniers jours, selon d'où viennent leurs heures (sante.js, nuits)
+  const ns30 = c.ns.filter(n => n.tst && n.fin > Date.now() - 30 * JOUR);
+  const etat = n => n.source === 'pouls' ? 'pouls' : n.debutSource === 'pouls' || n.finSource === 'pouls' || n.finAutoSource === 'pouls' ? 'corrigee' : n.controle === 'confirmee' ? 'confirmee' : 'nonVerifiee';
+  const nb = e => ns30.filter(n => etat(n) === e).length;
+  const sommeil = ns30.length ? `Sommeil, ${ns30.length} nuit${ns30.length > 1 ? 's' : ''} sur 30 jours : ` + [
+    [nb('confirmee'), 'du bracelet confirmée(s) par ton pouls'], [nb('corrigee'), 'du bracelet corrigée(s) au pouls'],
+    [nb('pouls'), 'prise(s) sur ton pouls (bracelet muet ou contredit)'], [nb('nonVerifiee'), 'du bracelet non vérifiée(s), trop peu de relevés de pouls'],
+  ].filter(([k]) => k).map(([k, t]) => `${k} ${k > 1 ? t.replace(/\(s\)/g, 's') : t.replace(/\(s\)/g, '')}`).join(', ') + '.' : 'Sommeil : pas encore de nuit à vérifier.';
+  // nuits où le bracelet n'a rien mesuré (retiré, déchargé, éteint) : ni comptées ni devinées, mais dites
+  const muettes = Array.from({ length: 30 }, (_, k) => cleJour(Date.now() - k * JOUR))
+    .filter(k => !c.ns.some(n => n.cle === k) && nuitMuette(D, k, Date.now()));
+  const sommeilMuet = muettes.length ? `Sommeil : ${muettes.length} nuit${muettes.length > 1 ? 's' : ''} sur 30 jours sans aucune mesure du bracelet (retiré, déchargé ou éteint), la dernière le ${new Date(debutJour(muettes[0])).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}. Rien n'y est deviné.` : null;
   $('#controles').innerHTML = [
+    sommeil, sommeilMuet,
     controle('Variabilité', c.fiab.vfc, ' ms', 'attendu : plus haute la nuit, lien négatif', 'e'),
     controle('Stress', c.fiab.stress, '', 'attendu : plus bas la nuit, lien positif'),
-  ].map(t => `<li>${t.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</li>`).join('');
+  ].filter(Boolean).map(t => `<li>${t.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</li>`).join('');
   const jours = [...c.J.keys()];
   $('#etatDonnees').textContent = D.maj
     ? `${D.exemple ? 'Exemple : ' : ''}${c.ns.filter(n => n.tst).length} nuits et ${Object.keys(D.pas).length} jours d'activité`

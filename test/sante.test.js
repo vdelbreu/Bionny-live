@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseDate, parseNum, stade, parseImport, lireHash, fusionner, vide, union, soustraire, total,
-  analyseNuit, nuits, recuperation, resume, reveilAuPouls, siestesFaites, siestesProbables, MIN, H, JOUR,
+  analyseNuit, nuits, recuperation, resume, reveilAuPouls, siestesFaites, siestesProbables, sansCopies, nuitMuette, silenceBracelet,
+  MIN, H, JOUR,
 } from '../js/sante.js';
 import { texteExemple } from '../js/exemple.js';
 
@@ -243,4 +244,171 @@ test('siestes : une courte période de sommeil du bracelet en journée en est un
   d.sommeil.push({ s, e: s + 40 * MIN, k: 'core' });
   assert.equal(nuits(d).length, 1);
   assert.deepEqual(siestesFaites(d).map(x => [x.source, x.fin - x.debut]), [['bracelet', 40 * MIN]]);
+});
+
+/* ---------- Nuits vérifiées au pouls ---------- */
+
+const le = (j, h, m = 0) => new Date(2026, 9, j, h, m).getTime();
+const hm = t => `${String(new Date(t).getHours()).padStart(2, '0')}:${String(new Date(t).getMinutes()).padStart(2, '0')}`;
+// 10 nuits de minuit à 8 h, pouls 50 à 54 endormi, 69 à 75 éveillé, un relevé toutes les 5 min ; le bracelet note
+// chaque nuit. pouls11(t) remplace le pouls de la dernière nuit.
+function dixNuits({ pouls11 = null, dort = (t) => new Date(t).getHours() < 8 } = {}) {
+  const d = vide();
+  let i = 0;
+  for (let t = le(1, 12); t < le(11, 20); t += 5 * MIN, i++) {
+    const v = dort(t) ? 52 + (i % 5) - 2 : 72 + (i % 7) - 3;
+    d.fc.push({ t, v: pouls11 && t >= le(11, 0) && t < le(11, 8) ? pouls11(i) : v });
+  }
+  for (let j = 2; j <= 11; j++) d.sommeil.push({ s: le(j, 0), e: le(j, 8), k: 'core' });
+  return d;
+}
+const nuit11 = d => nuits(d).find(n => n.cle === '2026-10-11');
+const sans11 = d => { d.sommeil = d.sommeil.filter(x => x.s < le(11, 0) - 2 * H); return d; };
+
+test('nuit du bracelet confirmée par le pouls : ses heures sont gardées telles quelles', () => {
+  const n = nuit11(dixNuits());
+  assert.equal(n.source, 'bracelet');
+  assert.equal(n.controle, 'confirmee');
+  assert.deepEqual([hm(n.debut), hm(n.fin), n.debutSource, n.finSource], ['00:00', '08:00', 'bracelet', 'bracelet']);
+  assert.equal(n.partCalme, 100);
+});
+
+test("nuit absente du bracelet : heures prises sur le pouls, sans phases", () => {
+  const n = nuit11(sans11(dixNuits()));
+  assert.equal(n.source, 'pouls');
+  assert.equal(n.debutBracelet, null);
+  assert.ok(Math.abs(n.debut - le(11, 0)) <= 10 * MIN, hm(n.debut));
+  assert.ok(Math.abs(n.fin - le(11, 8)) <= 10 * MIN, hm(n.fin));
+  assert.equal(n.aDesStades, false);
+  // sans 2 jours de relevés avant, rien n'est deviné
+  const debut = dixNuits(); debut.fc = debut.fc.filter(x => x.t >= le(10, 0)); debut.sommeil = [];
+  assert.equal(nuits(debut).length, 0);
+});
+
+test('nuit du bracelet contredite par le pouls (placée pendant que tu étais éveillé) : remplacée par la nuit au pouls', () => {
+  const d = sans11(dixNuits());
+  d.sommeil.push({ s: le(11, 6), e: le(11, 14), k: 'core' });
+  const n = nuit11(d);
+  assert.equal(n.source, 'pouls');
+  assert.equal(hm(n.debutBracelet), '06:00');
+  assert.ok(Math.abs(n.fin - le(11, 8)) <= 10 * MIN, hm(n.fin));
+  assert.ok(n.tst > 7 * H && n.tst <= 8 * H);
+});
+
+test('nuit coupée alors que le pouls reste celui du sommeil : prolongée jusqu\'au réveil vu au pouls', () => {
+  const d = sans11(dixNuits());
+  d.sommeil.push({ s: le(11, 0), e: le(11, 3), k: 'deep' });
+  const n = nuit11(d);
+  assert.equal(n.source, 'bracelet');
+  assert.equal(n.finSource, 'pouls');
+  assert.equal(hm(n.finBracelet), '03:00');
+  assert.ok(Math.abs(n.fin - le(11, 8)) <= 10 * MIN, hm(n.fin));
+  assert.equal(n.stades.deep, 3 * H);                            // les phases du bracelet restent
+  // pouls d'éveil juste après la coupure : tu t'étais réveillé, rien n'est ajouté
+  const reveille = sans11(dixNuits({ dort: t => new Date(t).getHours() < 8 && (t < le(11, 3) || t >= le(11, 3, 30)) }));
+  reveille.sommeil.push({ s: le(11, 0), e: le(11, 3), k: 'deep' });
+  assert.equal(nuit11(reveille).fin, le(11, 3));
+});
+
+test('début contredit : le bracelet te dit endormi à 22 h, ton pouls reste celui de l\'éveil jusqu\'à minuit', () => {
+  const d = sans11(dixNuits());
+  d.sommeil.push({ s: le(10, 22), e: le(11, 8), k: 'core' });
+  const n = nuit11(d);
+  assert.equal(n.controle, 'confirmee');
+  assert.equal(n.debutSource, 'pouls');
+  assert.equal(hm(n.debutBracelet), '22:00');
+  assert.ok(Math.abs(n.debut - le(11, 0)) <= 10 * MIN, hm(n.debut));
+  assert.equal(n.tst, 8 * H);
+});
+
+test('nuit de fièvre (pouls haut toute la nuit) : gardée, elle reste nettement sous le pouls de la journée', () => {
+  const n = nuit11(dixNuits({ pouls11: i => 64 + (i % 3) }));
+  assert.equal(n.source, 'bracelet');
+  assert.equal(n.controle, 'confirmee');
+  assert.deepEqual([hm(n.debut), hm(n.fin)], ['00:00', '08:00']);
+  assert.ok(n.fcNuit.repos >= 64);
+});
+
+test("longue période immobile l'après-midi : ni une nuit, ni ajoutée à la nuit du même jour", () => {
+  const d = dixNuits();
+  d.sommeil.push({ s: le(11, 13), e: le(11, 16, 30), k: 'core' });
+  const n = nuit11(d);
+  assert.deepEqual([hm(n.debut), hm(n.fin), n.tst], ['00:00', '08:00', 8 * H]);
+  assert.equal(nuits(d).filter(x => x.cle === '2026-10-11').length, 1);
+  // le pouls de l'après-midi est celui de l'éveil : pas comptée comme sieste non plus
+  assert.equal(siestesFaites(d).length, 0);
+});
+
+test('fusionner parJour : le sommeil est remplacé nuit par nuit, une nuit que le bracelet ne renvoie plus reste', () => {
+  const now = le(13, 12);
+  const base = { ...vide(), sommeil: [
+    { s: le(11, 0), e: le(11, 7), k: 'core' },          // nuit du 11, que le bracelet ne renvoie plus
+    { s: le(12, 1), e: le(12, 4), k: 'core' },          // nuit du 12 arrêtée à une synchro de 4 h
+  ] };
+  const imp = { ...parseImport(''), sommeil: [{ s: le(10, 0), e: le(10, 7, 30), k: 'core' }, { s: le(12, 1), e: le(12, 8), k: 'deep' }] };
+  const d = fusionner(base, imp, now, { parJour: true });
+  assert.deepEqual(d.sommeil.map(x => [hm(x.s), hm(x.e), x.k]), [['00:00', '07:30', 'core'], ['00:00', '07:00', 'core'], ['01:00', '08:00', 'deep']]);
+  assert.deepEqual(fusionner(base, imp, now).sommeil.length, 2);   // import de Santé : il fait foi sur toute sa période
+});
+
+/* ---------- Nuits redatées par le bracelet, nuits sans mesure ---------- */
+
+// une nuit du bracelet de 6 phases, commencée le jour j à h:m
+const phasesBracelet = [['core', 37], ['deep', 31], ['core', 22], ['rem', 16], ['core', 50], ['rem', 27]];
+function nuitBracelet(j, h, m) {
+  let t = le(j, h, m);
+  return phasesBracelet.map(([k, min]) => { const s = t; t += min * MIN; return { s, e: t, k }; });
+}
+
+test('copies : une ancienne nuit redatée (mêmes phases, même heure) est écartée, l\'originale gardée', () => {
+  const vraie = nuitBracelet(2, 1, 16), copie = nuitBracelet(7, 1, 16), fragment = nuitBracelet(9, 1, 16).slice(0, 1);
+  const autre = nuitBracelet(8, 1, 20);                           // même suite, autre heure : une vraie nuit
+  const garde = sansCopies([...copie, ...vraie, ...fragment, ...autre]);
+  assert.deepEqual([...new Set(garde.map(x => new Date(x.s).getDate()))], [2, 8]);
+  // une nuit d'une seule phase (Santé) n'est jamais prise pour une copie
+  const simples = [{ s: le(2, 0), e: le(2, 8), k: 'asleep' }, { s: le(3, 0), e: le(3, 8), k: 'asleep' }];
+  assert.equal(sansCopies(simples).length, 2);
+});
+
+test('copies : une ancienne nuit redatée par le bracelet ne remplace jamais une nuit enregistrée', () => {
+  const vraie12 = nuitBracelet(12, 1, 16), vraie22 = nuitBracelet(22, 0, 40).map(x => ({ ...x, k: 'deep' }));
+  const base = { ...vide(), sommeil: [...vraie12, ...vraie22] };
+  const imp = { ...parseImport(''), sommeil: nuitBracelet(22, 1, 16) };   // la nuit du 12, renvoyée comme celle du 22
+  const d = fusionner(base, imp, le(23, 12), { parJour: true });
+  assert.deepEqual(d.sommeil, base.sommeil);
+});
+
+test('pouls sur une partie de la nuit seulement : un pouls d\'éveil net la contredit', () => {
+  // la « nuit » du bracelet va de 18 h à 1 h 30, seules ses 45 dernières minutes ont du pouls, celui de l'éveil ;
+  // endormi en vrai de 2 h 45 à 10 h 30
+  const dort = t => (t >= le(10, 12) ? t >= le(11, 2, 45) && t < le(11, 10, 30) : new Date(t).getHours() < 8);
+  const d = sans11(dixNuits({ dort }));
+  d.fc = d.fc.filter(x => x.t < le(10, 18) || x.t >= le(11, 0, 45));
+  d.sommeil.push({ s: le(10, 18), e: le(11, 1, 30), k: 'core' });
+  const n = nuit11(d);
+  assert.equal(n.source, 'pouls');
+  assert.equal(hm(n.debutBracelet), '18:00');
+  assert.ok(Math.abs(n.debut - le(11, 2, 45)) <= 10 * MIN, hm(n.debut));
+  assert.ok(Math.abs(n.fin - le(11, 10, 30)) <= 10 * MIN, hm(n.fin));
+});
+
+test('sieste qui chevauche une nuit : elle en fait partie, comptée une seule fois', () => {
+  const d = dixNuits();
+  d.siestes = [{ debut: le(11, 6), fin: le(11, 9), source: 'confirmee' }, { debut: le(11, 14), fin: le(11, 14, 30), source: 'declaree' }];
+  assert.equal(siestesFaites(d).length, 2);
+  assert.deepEqual(siestesFaites(d, nuits(d)).map(x => hm(x.debut)), ['14:00']);
+});
+
+test('nuit muette : le bracelet a mesuré la veille et le matin, rien la nuit ; rien n\'est deviné', () => {
+  const d = sans11(dixNuits());
+  d.fc = d.fc.filter(x => x.t < le(10, 23) || x.t >= le(11, 9));
+  const apres = le(11, 19);
+  assert.equal(nuit11(d), undefined);
+  assert.equal(nuitMuette(d, '2026-10-11', apres), true);
+  assert.equal(nuitMuette(dixNuits(), '2026-10-11', apres), false);
+  // pas encore synchronisé depuis la nuit : pas muette, mais le silence se voit à la synchro suivante
+  const avant = { ...d, fc: d.fc.filter(x => x.t < le(10, 23)) };
+  assert.equal(nuitMuette(avant, '2026-10-11', apres), false);
+  assert.equal(silenceBracelet({ ...avant, majBracelet: le(10, 23, 30) }), null);
+  assert.equal(hm(silenceBracelet({ ...avant, majBracelet: le(11, 9) })), '22:55');
 });

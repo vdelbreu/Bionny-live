@@ -151,7 +151,9 @@ export class CollecteGros {
 }
 
 // Sommeil : octet 6 = nombre de jours, puis par jour [jours avant, taille, début uint16 LE, fin uint16 LE, (stade, minutes)…].
-// Début et fin en minutes depuis minuit du jour du réveil ; début > fin = endormi la veille au soir.
+// Début et fin en minutes depuis minuit du jour du réveil ; début > fin = endormi la veille au soir (comme Gadgetbridge).
+// La nuit est bornée par ce début et cette fin : un stade qui déborde est coupé à la fin annoncée, un jour aux heures
+// impossibles est ignoré.
 export function lireSommeil(o, maintenant) {
   const segs = [];
   if (o.length < 7 || (o[2] | (o[3] << 8)) < 2) return segs;
@@ -160,16 +162,31 @@ export function lireSommeil(o, maintenant) {
     const joursAvant = o[i], taille = o[i + 1];
     const debut = o[i + 2] | (o[i + 3] << 8), fin = o[i + 4] | (o[i + 5] << 8);
     const minuit = minuitLocal(maintenant, joursAvant);
-    let curseur = aMinute(minuit, debut > fin ? debut - 1440 : debut);
-    for (let k = i + 6; k + 1 < i + 2 + taille && k + 1 < o.length; k += 2) {
-      const minutes = o[k + 1];
-      if (!minutes) continue;
-      segs.push({ s: curseur, e: curseur + minutes * MIN, k: STADES[o[k]] ?? 'asleep' });
-      curseur += minutes * MIN;
+    const s = aMinute(minuit, debut > fin ? debut - 1440 : debut), e = aMinute(minuit, fin);
+    if (debut < 1440 && fin < 1440 && e > s && e - s <= 20 * 60 * MIN) {
+      let curseur = s;
+      for (let k = i + 6; k + 1 < i + 2 + taille && k + 1 < o.length && curseur < e; k += 2) {
+        const minutes = o[k + 1];
+        if (!minutes) continue;
+        segs.push({ s: curseur, e: Math.min(e, curseur + minutes * MIN), k: STADES[o[k]] ?? 'asleep' });
+        curseur += minutes * MIN;
+      }
     }
     i += 2 + taille;
   }
   return segs;
+}
+
+// En-têtes des nuits, telles que le bracelet les annonce, pour le journal : « J-2 01:16→08:11 16 phases ». Le bracelet
+// renvoie parfois une ancienne nuit sous un autre « jours avant » (sante.js, sansCopies) : le journal le montre.
+export function entetesSommeil(o) {
+  const out = [], hm = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  for (let i = 7, j = 0; o.length >= 7 && j < o[6] && i + 6 <= o.length; j++) {
+    const taille = o[i + 1];
+    out.push(`J-${o[i]} ${hm(o[i + 2] | (o[i + 3] << 8))}→${hm(o[i + 4] | (o[i + 5] << 8))} ${Math.max(0, (taille - 4) >> 1)} phases`);
+    i += 2 + taille;
+  }
+  return out.join(', ') || 'aucune nuit';
 }
 
 // Oxygène : blocs de 49 octets [jours avant, puis (min, max) pour chaque heure 0 à 23]

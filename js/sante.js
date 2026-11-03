@@ -185,15 +185,25 @@ export const vide = () => ({ v: 1, sommeil: [], fc: [], pas: {}, vfc: [], spo2: 
 
 // L'import fait foi sur la période qu'il couvre : ce qui est stocké à partir de sa première mesure est remplacé.
 // parJour (synchro du bracelet, jour par jour) : seuls les jours présents dans l'import sont remplacés, pour qu'une
-// synchro interrompue n'efface jamais un jour déjà enregistré. Le sommeil reste remplacé à partir de sa première nuit.
+// synchro interrompue n'efface jamais un jour déjà enregistré. Le sommeil, lui, est remplacé nuit par nuit : chaque
+// période renvoyée remplace ce qui était noté pendant elle (à 2 h près, comme elles sont regroupées) ; une nuit que le
+// bracelet ne renvoie plus (il n'en garde qu'une par jour) reste, et une ancienne nuit redatée (sansCopies) n'en
+// remplace jamais une vraie.
 export function fusionner(base, imp, maintenant, { parJour = false } = {}) {
   const out = { ...vide(), ...base, exemple: false };
   const temps = x => x.s ?? x.t;
   for (const type of SERIES) {
-    const nouv = imp[type] || [];
+    let nouv = imp[type] || [];
+    if (parJour && type === 'sommeil' && nouv.length) {
+      const vraies = new Set(sansCopies([...(base.sommeil || []), ...nouv]));
+      nouv = nouv.filter(x => vraies.has(x));
+    }
     if (!nouv.length) continue;
     let garder;
-    if (parJour && type !== 'sommeil') {
+    if (parJour && type === 'sommeil') {
+      const plages = grappesSommeil({ sommeil: nouv }).map(g => ({ s: g.segs[0].s - 2 * H, e: g.fin + 2 * H }));
+      garder = x => !plages.some(p => x.s < p.e && x.e > p.s);
+    } else if (parJour) {
       const jours = new Set(nouv.map(x => cleJour(temps(x))));
       garder = x => !jours.has(cleJour(temps(x)));
     } else {
@@ -272,16 +282,17 @@ export function analyseNuit(segs) {
   };
 }
 
-// Sommeil principal : au moins 3 h, ou au moins 30 min qui recouvrent 2 h à 5 h du matin. Le reste = sieste.
+// Sommeil principal : au moins 30 min qui recouvrent 2 h à 5 h du matin, ou au moins 3 h hors de l'après-midi (le
+// bracelet prend parfois un long moment immobile en journée pour du sommeil). Le reste = sieste.
 function estNuit(n) {
   const d = n.tst || n.lit;
-  if (d >= 3 * H) return true;
   if (d < 30 * MIN) return false;
   for (const t of [n.debutLit, n.finLit]) {
     const j = new Date(t), a = new Date(j.getFullYear(), j.getMonth(), j.getDate(), 2).getTime();
     if (n.debutLit < a + 3 * H && n.finLit > a) return true;
   }
-  return false;
+  const milieu = new Date((n.debutLit + n.finLit) / 2).getHours();
+  return d >= 3 * H && !(milieu >= 12 && milieu < 19);
 }
 
 // FC de repos = moyenne du décile le plus bas des mesures prises pendant le sommeil (6 mesures minimum)
@@ -294,9 +305,32 @@ export function fcRepos(fc, a, b) {
 
 function dans(serie, a, b) { return serie.filter(x => x.t >= a && x.t <= b).map(x => x.v); }
 
-// Segments regroupés en périodes de sommeil (trous de moins de 2 h = même période)
+// Le bracelet renvoie parfois une ancienne nuit redatée : mêmes phases, même heure, autre jour (vu en octobre : les
+// nuits du 11 au 14 revenues 5 à 10 jours plus tard, posées sur de vraies nuits). Une session (suite de phases
+// contiguës) dont les phases reprennent, depuis la même heure, celles d'une session plus ancienne d'au moins 4 phases
+// (une vraie nuit du bracelet en a une vingtaine : deux nuits pareilles à la minute près n'existent pas) est une
+// copie : on garde la plus ancienne. Une nuit d'une seule phase (Santé, réglage du coucher) n'est jamais comparée.
+const minutesJour = t => { const d = new Date(t); return d.getHours() * 60 + d.getMinutes(); };
+export function sansCopies(segs) {
+  const sessions = [];
+  for (const x of [...segs].sort((a, b) => a.s - b.s || a.e - b.e)) {
+    const c = sessions.find(c => c.at(-1).e === x.s);
+    if (c) c.push(x); else sessions.push([x]);
+  }
+  const phases = c => c.map(x => `${x.k} ${Math.round((x.e - x.s) / MIN)}`);
+  const gardees = [];
+  for (const c of sessions.sort((a, b) => a[0].s - b[0].s)) {
+    const p = phases(c), h = minutesJour(c[0].s), jour = cleJour(c[0].s);
+    const copie = gardees.some(g => g.length >= 4 && cleJour(g[0].s) !== jour && minutesJour(g[0].s) === h && p.length <= g.length
+      && phases(g).every((x, i) => i >= p.length || x === p[i]));
+    if (!copie) gardees.push(c);
+  }
+  return gardees.flat().sort((a, b) => a.s - b.s);
+}
+
+// Segments regroupés en périodes de sommeil (trous de moins de 2 h = même période), sans les copies
 function grappesSommeil(d) {
-  const segs = [...d.sommeil].sort((a, b) => a.s - b.s);
+  const segs = sansCopies(d.sommeil || []);
   const grappes = [];
   for (const x of segs) {
     const g = grappes.at(-1);
@@ -324,30 +358,206 @@ export function reveilAuPouls(n, fc) {
   return null;
 }
 
-// Nuits, datées par le jour du réveil, telles que le bracelet les a détectées (comme l'app Bionny). Seule exception :
-// l'heure de réveil que tu corriges toi-même. finProvisoire : le bracelet a arrêté la nuit au moment d'une synchro.
-// (reveilAuPouls reste disponible mais n'est plus appliqué : à la demande de l'utilisateur, on garde le bracelet.)
-export function nuits(d) {
-  const parJour = new Map();
+// Périodes du bracelet rangées par jour de réveil. Deux périodes qui finissent le même jour ne font une seule nuit que
+// si moins de 4 h les séparent (réveillé au milieu de la nuit) ; sinon la plus longue est la nuit, l'autre une sieste.
+function periodesBracelet(d) {
+  const parJour = new Map(), siestes = [];
   for (const g of grappesSommeil(d)) {
     const n = analyseNuit(g.segs);
-    if (!estNuit(n)) continue;
+    if (!estNuit(n)) { if (n.tst >= 10 * MIN) siestes.push(n); continue; }
     const cle = cleJour(n.fin), prec = parJour.get(cle);
-    parJour.set(cle, prec ? analyseNuit([...prec.segs, ...g.segs]) : n);
+    if (!prec) parJour.set(cle, n);
+    else if (n.debutLit - prec.finLit < 4 * H) parJour.set(cle, analyseNuit([...prec.segs, ...g.segs]));
+    else { parJour.set(cle, n.tst > prec.tst ? n : prec); siestes.push(n.tst > prec.tst ? prec : n); }
   }
-  return [...parJour.entries()].map(([cle, brute]) => {
-    let n = brute, finSource = 'bracelet';
-    const toi = d.reveils?.[cle];
-    if (Number.isFinite(toi) && toi > brute.debut + H && toi < brute.fin + 3 * H) {
-      n = analyseNuit(toi < brute.finLit ? couperA(brute.segs, toi) : prolongerA(brute.segs, toi));
+  return { parJour, siestes };
+}
+
+/* ---------- Nuits vérifiées au pouls ---------- */
+// Le bracelet détecte tes nuits ; ton pouls, relevé toutes les 5 min, sert à les vérifier. Sur des nuits justes, il
+// est au niveau du sommeil 85 à 95 % du temps ; la même nuit décalée de 6 h dans la journée tombe sous 60 %.
+
+const indexDe = (fc, t) => { let a = 0, b = fc.length; while (a < b) { const m = (a + b) >> 1; if (fc[m].t < t) a = m + 1; else b = m; } return a; };
+const entre = (fc, a, b) => fc.slice(indexDe(fc, a), indexDe(fc, b));   // fc trié
+// le pouls est déjà trié par fusionner : on ne le retrie que s'il ne l'est pas
+const trie = (fc = []) => fc.every((x, i) => !i || fc[i - 1].t <= x.t) ? fc : [...fc].sort((a, b) => a.t - b.t);
+const centile = (v, q) => { const t = [...v].sort((x, y) => x - y); return t[Math.min(t.length - 1, Math.floor(q * t.length))]; };
+// médiane glissante sur 3 relevés : un pic isolé (rêve, micro-réveil) ne compte pas
+const lisser = fc => fc.map((x, i) => ({ t: x.t, v: mediane(fc.slice(Math.max(0, i - 1), i + 2).map(y => y.v)) }));
+const CALME = 10;                 // relevé au niveau du sommeil : pouls de sommeil + 10 bpm au plus
+const SOUS = 5, AU_DESSUS = 12;  // endormi sous + 5 (20 min de suite), réveillé au-dessus de + 12 (15 min de suite)
+
+// Ton pouls de sommeil : 10e centile de tes relevés des 7 jours précédents. Tu dors un tiers du temps, ce centile tombe
+// donc dans tes nuits, sans dépendre de ce que le bracelet appelle sommeil. Il faut environ 2 jours de relevés.
+export function poulsDeSommeil(fc, t) {
+  const v = entre(fc, t - 7 * JOUR, t).map(x => x.v);
+  return v.length >= 600 ? centile(v, .1) : null;
+}
+
+// Pendant que le bracelet te dit endormi, ton pouls doit être au niveau du sommeil (60 % des relevés au moins ; 85 à
+// 95 % sur tes vraies nuits), ou sinon nettement plus bas que pendant les 6 h d'éveil autour (5 bpm au moins : une nuit
+// de fièvre, pouls haut, reste une nuit). Ni l'un ni l'autre : contredite (6 à 23 bpm d'écart sur tes vraies nuits,
+// 4 au plus sur les mêmes décalées de 6 h). Pouls sur moins de 40 % de la nuit : on ne confirme pas sur si peu, mais
+// un pouls d'éveil net (moins de 30 % au niveau du sommeil, pas plus bas qu'autour) la contredit. Moins de 6 relevés
+// (30 min) : verdict null, on ne peut pas juger.
+export function controleAuPouls(n, fc, ref, autres = []) {
+  if (ref == null || !n.tst) return null;
+  const v = n.dort.flatMap(x => entre(fc, x.s, x.e)).map(x => x.v);
+  if (v.length < 6) return null;
+  const part = v.filter(x => x <= ref + CALME).length / v.length;
+  const endormi = x => autres.some(p => p !== n && x.t >= p.debut && x.t < p.fin);
+  const autour = [...entre(fc, n.debut - 6 * H, n.debut), ...entre(fc, n.fin, n.fin + 6 * H)].filter(x => !endormi(x)).map(x => x.v);
+  const ecart = autour.length >= 12 ? mediane(autour) - mediane(v) : null;
+  const contredite = ecart != null && ecart < 5;
+  const verdict = v.length >= .4 * n.tst / (5 * MIN)
+    ? (part >= .6 || ecart >= 5 ? 'confirmee' : contredite ? 'contredite' : null)
+    : (part < .3 && contredite ? 'contredite' : null);
+  return { part, ecart, verdict };
+}
+
+// Pas par heure (quarts d'heure additionnés), indexés par heure depuis 1970
+function pasParHeure(activite = []) {
+  const m = new Map();
+  for (const x of activite) { const h = Math.floor(x.t / H); m.set(h, (m.get(h) || 0) + x.v); }
+  return m;
+}
+const pasMax = (pasH, a, b) => { let m = 0; for (let h = Math.floor(a / H); h <= Math.floor((b - 1) / H); h++) m = Math.max(m, pasH.get(h) || 0); return m; };
+
+// Périodes calmes : ton pouls lissé passe 20 min sous ton pouls de sommeil + 5, et la période dure jusqu'à 15 min
+// au-dessus de + 12 (ou 20 min sans relevé).
+function periodesCalmes(fc, ref) {
+  const l = lisser(fc), out = [];
+  let cur = null, hautes = 0, basses = 0, debut = null;
+  for (const x of l) {
+    if (cur) {
+      if (x.t - cur.e > 20 * MIN) { out.push(cur); cur = null; }
+      else if (x.v > ref + AU_DESSUS) { if (++hautes >= 3) { out.push(cur); cur = null; basses = 0; continue; } }
+      else { hautes = 0; cur.e = x.t + 5 * MIN; }
+    }
+    if (!cur) {
+      if (x.v <= ref + SOUS) { if (!basses) debut = x.t; basses++; } else basses = 0;
+      if (basses >= 4) { cur = { s: debut, e: x.t + 5 * MIN }; basses = 0; hautes = 0; }
+    }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+// Nuit au pouls, quand le bracelet n'a rien noté ou que ton pouls le contredit : de 18 h la veille à 14 h, les périodes
+// calmes séparées de moins de 75 min, sans marcher entre deux (moins de 250 pas dans l'heure), forment une nuit. La plus
+// longue compte si elle dure 3 h, passe entre minuit et 7 h, et si ton pouls y est nettement plus bas (8 bpm) que le
+// reste de la fenêtre. Moins précise que le bracelet : une dizaine de minutes d'écart d'habitude, bien plus si tu restes
+// éveillé au calme. Une nuit encore en cours (moins de 30 min de relevés après) n'est pas comptée.
+export function nuitAuPouls(fc, pasH, cle, ref) {
+  if (ref == null) return null;
+  const j = debutJour(cle), a = j - 6 * H, b = j + 14 * H;
+  const brut = entre(fc, a, b);
+  if (brut.length < .5 * (b - a) / (5 * MIN)) return null;
+  const nuitsP = [];
+  for (const r of periodesCalmes(brut, ref)) {
+    const p = nuitsP.at(-1);
+    if (p && r.s - p.e <= 75 * MIN && pasMax(pasH, p.e, r.s) < 250) { p.e = r.e; p.morceaux.push(r); }
+    else nuitsP.push({ s: r.s, e: r.e, morceaux: [r] });
+  }
+  const n = nuitsP.filter(x => x.e - x.s >= 3 * H && x.s < j + 7 * H && x.e > j).sort((x, y) => (y.e - y.s) - (x.e - x.s))[0];
+  if (!n || brut.at(-1).t < n.e + 30 * MIN) return null;
+  const dedans = brut.filter(x => x.t >= n.s && x.t < n.e).map(x => x.v), dehors = brut.filter(x => x.t < n.s || x.t >= n.e).map(x => x.v);
+  if (dehors.length && mediane(dedans) > mediane(dehors) - 8) return null;
+  return n.morceaux.map(x => ({ s: x.s, e: x.e, k: 'asleep' }));
+}
+
+// Début ou fin contredits par ton pouls : 45 min au moins entre l'heure du bracelet et le moment où ton pouls reste
+// 30 min au niveau du sommeil (+ 8), dont 60 % des relevés au pouls d'éveil (au-dessus de + 10). On prend ce moment.
+function bornesAuPouls(n, fc, ref) {
+  const l = lisser(entre(fc, n.debut, n.fin)), calme = x => x.v <= ref + 8;
+  let debut = null, fin = null;
+  for (let i = 0, k = 0; i < l.length && debut == null; i++) { k = calme(l[i]) ? k + 1 : 0; if (k >= 6) debut = l[i - 5].t; }
+  for (let i = l.length - 1, k = 0; i >= 0 && fin == null; i--) { k = calme(l[i]) ? k + 1 : 0; if (k >= 6) fin = l[i + 5].t + 5 * MIN; }
+  const eveille = (a, b) => { const v = entre(fc, a, b); return v.length && v.filter(x => x.v > ref + CALME).length / v.length >= .6; };
+  return {
+    debut: debut != null && debut - n.debut >= 45 * MIN && eveille(n.debut, debut) ? debut : null,
+    fin: fin != null && n.fin - fin >= 45 * MIN && eveille(fin, n.fin) ? fin : null,
+  };
+}
+
+// Nuit coupée : juste après la fin notée par le bracelet (ou juste avant son début), ton pouls reste au niveau du
+// sommeil (sous + 5 dès les 10 premières minutes) pendant 1 h au moins, sans marcher (moins de 100 pas dans l'heure).
+// La nuit va jusqu'au réveil (ou part de l'endormissement) vu au pouls : 15 min au-dessus de + 12, 6 h au plus.
+function prolongementAuPouls(n, fc, pasH, ref, avant = false) {
+  const bord = avant ? n.debut : n.fin;
+  const cote = avant ? entre(fc, bord - 6 * H, bord - 5 * MIN + 1).reverse() : entre(fc, bord, bord + 6 * H);
+  const ecart = x => (avant ? bord - x.t - 5 * MIN : x.t - bord);
+  if (cote.length < 12 || ecart(cote[0]) > 10 * MIN) return null;
+  const l = lisser(cote);
+  if (l[0].v > ref + SOUS || (l[1] && ecart(l[1]) <= 10 * MIN && l[1].v > ref + SOUS)) return null;
+  let lim = bord, hautes = 0;
+  for (const x of l) {
+    if ((avant ? lim - x.t - 5 * MIN : x.t - lim) > 20 * MIN) break;
+    if (x.v > ref + AU_DESSUS) { if (++hautes >= 3) break; } else { hautes = 0; lim = avant ? x.t : x.t + 5 * MIN; }
+  }
+  const auDela = avant ? cote.at(-1).t <= lim - 30 * MIN : cote.at(-1).t >= lim + 30 * MIN;   // ton réveil (ou ton coucher) est vu
+  // les pas comptent dans les heures entre les deux, sauf celle du réveil (ou du coucher) : tu y as marché éveillé
+  const pas = avant ? pasMax(pasH, (Math.floor(lim / H) + 1) * H, bord) : pasMax(pasH, bord, Math.floor(lim / H) * H);
+  return Math.abs(lim - bord) >= H && pas < 100 && auDela ? lim : null;
+}
+const couperAvant = (segs, t) => segs.filter(x => x.e > t).map(x => (x.s < t ? { ...x, s: t } : x));
+const lendemain = cle => cleJour(debutJour(cle) + 36 * H);
+
+// Nuits, datées par le jour du réveil. Les heures du bracelet sont gardées quand ton pouls les confirme ou ne permet
+// pas de juger. Sinon, et chaque fois c'est signalé (source, debutSource, finSource) :
+// - pas de nuit du bracelet, ou nuit contredite : nuit au pouls (sans phases), ou rien si ton pouls ne montre pas de nuit ;
+// - début ou fin contredits : corrigés au pouls ; nuit coupée alors que tu dormais encore : prolongée.
+// L'heure de réveil que tu corriges toi-même passe avant tout. finProvisoire : nuit arrêtée au moment d'une synchro.
+export function nuits(d) {
+  const fc = trie(d.fc), pasH = pasParHeure(d.activite);
+  const { parJour, siestes } = periodesBracelet(d);
+  const periodes = [...parJour.values(), ...siestes];
+  const controles = new Map(periodes.map(n => [n, controleAuPouls(n, fc, poulsDeSommeil(fc, n.fin), periodes)]));
+  // une nuit du bracelet que ton pouls ne contredit pas : une nuit au pouls ne vient jamais par-dessus. Un bout de
+  // sommeil trop court pour être une nuit (le bracelet n'a gardé que le début) peut, lui, en faire partie.
+  const occupe = [...parJour.values()].filter(n => controles.get(n)?.verdict !== 'contredite');
+  const libre = (a, b, sauf) => !occupe.some(x => x !== sauf && x.debut < b && x.fin > a);
+  const cles = new Set(parJour.keys());
+  if (fc.length) for (let k = cleJour(fc[0].t); debutJour(k) <= fc.at(-1).t; k = lendemain(k)) cles.add(k);
+  const out = [];
+  for (const cle of cles) {
+    const brute = parJour.get(cle) ?? null;
+    const ref = poulsDeSommeil(fc, brute ? brute.fin : debutJour(cle) + 14 * H);
+    const controle = brute ? controles.get(brute) : null;
+    let n = brute, source = 'bracelet', debutSource = 'bracelet', finSource = 'bracelet';
+    if (!brute || controle?.verdict === 'contredite') {
+      // rien au pouls non plus : pas de nuit (une nuit contredite n'est jamais affichée telle quelle)
+      const segs = nuitAuPouls(fc, pasH, cle, ref), p = segs && analyseNuit(segs);
+      if (!p || !libre(p.debut, p.fin, brute)) continue;
+      n = p; source = debutSource = finSource = 'pouls';
+    } else if (controle?.verdict === 'confirmee') {
+      const b = bornesAuPouls(brute, fc, ref);
+      let segs = brute.segs;
+      if (b.debut != null) { segs = couperAvant(segs, b.debut); debutSource = 'pouls'; }
+      if (b.fin != null) { segs = couperA(segs, b.fin); finSource = 'pouls'; }
+      if (total(union(segs)) < H) { segs = brute.segs; debutSource = finSource = 'bracelet'; }   // presque rien ne reste : on ne touche à rien
+      const avant = debutSource === 'bracelet' && prolongementAuPouls(brute, fc, pasH, ref, true);
+      if (avant && libre(avant, brute.debut, brute)) { segs = [{ s: avant, e: brute.debut, k: 'asleep' }, ...segs]; debutSource = 'pouls'; }
+      const apres = finSource === 'bracelet' && prolongementAuPouls(brute, fc, pasH, ref);
+      if (apres && libre(brute.fin, apres, brute)) { segs = prolongerA(segs, apres); finSource = 'pouls'; }
+      if (segs !== brute.segs) n = analyseNuit(segs);
+    }
+    out.push({ cle, brute, n, source, debutSource, finSource, controle });
+  }
+  return out.map(({ cle, brute, n = brute, source = 'bracelet', debutSource = 'bracelet', finSource = 'bracelet', controle = null }) => {
+    const toi = d.reveils?.[cle], finAuto = n.fin, finAutoSource = finSource;   // avant ta correction
+    if (Number.isFinite(toi) && toi > n.debut + H && toi < n.fin + 3 * H) {
+      n = analyseNuit(toi < n.finLit ? couperA(n.segs, toi) : prolongerA(n.segs, toi));
       finSource = 'toi';
     }
     const finProvisoire = finSource === 'bracelet' && (d.synchros || []).some(t => t - brute.fin >= -2 * MIN && t - brute.fin <= 10 * MIN);
     const vfc = n.tst ? dans(d.vfc || [], n.debut - H, n.fin + 2 * H) : [];
     const spo2 = n.tst ? dans(d.spo2 || [], n.debut, n.fin) : [];
     return {
-      cle, ...n, finBracelet: brute.fin, finSource, finProvisoire,
-      fcNuit: n.tst ? fcRepos(d.fc || [], n.debut, n.fin) : null,
+      cle, ...n, source, debutSource, finSource, finProvisoire,
+      controle: controle?.verdict ?? null, partCalme: controle ? Math.round(controle.part * 100) : null,
+      debutBracelet: brute?.debut ?? null, finBracelet: brute?.fin ?? null, finAuto, finAutoSource,
+      fcNuit: n.tst ? fcRepos(fc, n.debut, n.fin) : null,
       vfcNuit: vfc.length ? Math.round(moyenne(vfc)) : null,
       spo2Nuit: spo2.length ? { moy: Math.round(moyenne(spo2)), min: Math.round(Math.min(...spo2)) } : null,
     };
@@ -355,15 +565,33 @@ export function nuits(d) {
 }
 
 // Siestes. Le bracelet n'en enregistre pas (une seule période de sommeil par jour) : elles viennent de toi, déclarées
-// ou proposées puis confirmées, et du bracelet s'il en note une un jour. Elles comptent dans ton sommeil de la semaine.
+// ou proposées puis confirmées, et du bracelet s'il en note une un jour (sauf si ton pouls le contredit). Elles comptent
+// dans ton sommeil de la semaine, sauf celles qui chevauchent une nuit (ns) : elles en font partie, comptées une fois.
 const chevauche = (liste, a, b) => liste.some(x => x.debut < b && x.fin > a);
-export function siestesFaites(d) {
+export function siestesFaites(d, ns = []) {
   const faites = (d.siestes || []).map(x => ({ ...x }));
-  for (const g of grappesSommeil(d)) {
-    const n = analyseNuit(g.segs);
-    if (!estNuit(n) && n.tst >= 10 * MIN && !chevauche(faites, n.debut, n.fin)) faites.push({ debut: n.debut, fin: n.fin, source: 'bracelet' });
+  const fc = trie(d.fc), { parJour, siestes } = periodesBracelet(d), periodes = [...parJour.values(), ...siestes];
+  for (const n of siestes) {
+    if (chevauche(faites, n.debut, n.fin) || controleAuPouls(n, fc, poulsDeSommeil(fc, n.fin), periodes)?.verdict === 'contredite') continue;
+    faites.push({ debut: n.debut, fin: n.fin, source: 'bracelet' });
   }
-  return faites.sort((a, b) => a.debut - b.debut);
+  return faites.filter(x => !chevauche(ns, x.debut, x.fin)).sort((a, b) => a.debut - b.debut);
+}
+
+// Nuit sans mesure : le bracelet a relevé ton pouls la veille et après 6 h, mais presque rien entre 1 h et 6 h du matin
+// (moins d'un quart des relevés). Il était retiré, déchargé ou éteint : rien ne dit si tu as dormi, la nuit n'est ni
+// comptée ni devinée. (Pas encore synchronisé, ou bracelet pas encore porté : ce n'est pas une nuit muette.)
+export function nuitMuette(d, cle, maintenant) {
+  const j = debutJour(cle), fc = trie(d.fc);
+  return entre(fc, j - 24 * H, j + H).length > 0 && entre(fc, j + 6 * H, maintenant + 1).length > 0
+    && entre(fc, j + H, j + 6 * H).length < 15;
+}
+
+// Bracelet silencieux : la dernière synchro a eu lieu plus de 3 h après son dernier relevé de pouls (toutes les 5 min
+// d'habitude). Renvoie l'heure de ce dernier relevé, ou null.
+export function silenceBracelet(d) {
+  const derniere = (d.fc || []).reduce((m, x) => Math.max(m, x.t), 0);
+  return derniere && d.majBracelet && !d.exemple && d.majBracelet - derniere > 3 * H ? derniere : null;
 }
 
 // Siestes probables, à confirmer, jamais comptées seules : de 45 min après ton réveil jusqu'à 21 h, au moins 20 min où
@@ -374,7 +602,7 @@ export function siestesProbables(d, ns, maintenant, jours = 2) {
   const refs = ns.map(n => n.fcNuit?.moy).filter(Number.isFinite);
   if (!refs.length) return [];
   const ref = mediane(refs.slice(-7)), seuil = ref + 4, plafond = ref + 9;
-  const faites = siestesFaites(d), refusees = d.nonSiestes || [];
+  const faites = siestesFaites(d, ns), refusees = d.nonSiestes || [];
   const pasHeure = new Map((d.activite || []).map(x => [Math.floor(x.t / H), x.v]));
   const horsNuit = t => !ns.some(n => t >= n.debut - 30 * MIN && t <= n.fin + 45 * MIN);
   const jour = t => { const h = new Date(t).getHours(); return h >= 6 && h < 21; };

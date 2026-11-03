@@ -3,7 +3,7 @@
 // - sinon protocole Colmi du Bionny 4.0 (bracelet.js) : mesure en direct, batterie, synchronisation de l'historique.
 import {
   UART, UART_ECRITURE, UART_NOTIF, V2, V2_ECRITURE, V2_NOTIF, demandes, minuitLocal,
-  lireDirect, lireContinu, lireBatterie, lireActiviteDirecte, CollecteFc, CollecteActivite, CollecteVfc, CollecteStress, CollecteGros, lireSommeil, lireSpo2,
+  lireDirect, lireContinu, lireBatterie, lireActiviteDirecte, CollecteFc, CollecteActivite, CollecteVfc, CollecteStress, CollecteGros, lireSommeil, entetesSommeil, lireSpo2,
   demandesReglages, lireReveils as decoderReveils, MESURES_AUTO, INTERVALLE_POULS, demandesMesures, lireMesureAuto,
 } from './bracelet.js';
 import { parseHR } from './coeur.js';
@@ -280,10 +280,14 @@ export async function synchroniser(jours, progres = () => {}) {
     progres('Stress');
     imp.stress = (await collecter(demandes.stress(), new CollecteStress(minuitLocal(maintenant, 0)))).mesures;
     if (E.ecrireV2) {
+      // réponse incomplète (notifications perdues) : on ne la lit pas, les nuits déjà enregistrées restent
       progres('Sommeil');
-      imp.sommeil = lireSommeil((await collecter(demandes.sommeil(), new CollecteGros(0x27), true, 4000)).octets, maintenant);
+      const som = await collecter(demandes.sommeil(), new CollecteGros(0x27), true, 4000);
+      if (som.fini) { imp.sommeil = lireSommeil(som.octets, maintenant); info(`sommeil reçu : ${entetesSommeil(som.octets)}`); }
+      else if (som.octets.length) imp.avertissements.push('Sommeil reçu en partie seulement : les nuits déjà enregistrées sont gardées.');
       progres('Oxygène');
-      imp.spo2 = lireSpo2((await collecter(demandes.spo2(), new CollecteGros(0x2a), true, 4000)).octets, maintenant);
+      const ox = await collecter(demandes.spo2(), new CollecteGros(0x2a), true, 4000);
+      if (ox.fini) imp.spo2 = lireSpo2(ox.octets, maintenant);
     } else imp.avertissements.push("Le bracelet n'expose pas le service du sommeil.");
   } finally {
     if (enDirect && connecte()) demarrerDirect();

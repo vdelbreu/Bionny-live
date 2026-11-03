@@ -1,11 +1,11 @@
 // Onglet Données : un sous-onglet par mesure. En haut le détail du jour choisi (avec une phrase qui explique),
 // en dessous la tendance sur 7, 30 ou 90 jours et le calendrier du mois (touche un jour pour le détailler).
-import { duree, cleJour, debutJour, moyenne, MIN, H, JOUR } from '../sante.js';
+import { duree, cleJour, debutJour, moyenne, nuitMuette, MIN, H, JOUR } from '../sante.js';
 import { hypnogramme, colonnes, plages, courbe, calendrier, esc, hm, dateCourte } from '../graphes.js';
 import { ZONES } from '../coeur.js';
 import { repere, joursPasses, decalerJour } from '../stats.js';
 import { effort, phraseCoeur } from '../coach.js';
-import { $, nf, km, pct, compact, dateCle, tuiles, faceNormale, barreProgression, tableStades, aDesDonnees, placer, dessinerGraphes, nouveauxGraphes } from '../ui.js';
+import { $, nf, km, pct, compact, dateCle, tuiles, faceNormale, barreProgression, tableStades, aDesDonnees, placer, dessinerGraphes, nouveauxGraphes, origineNuit } from '../ui.js';
 
 // zoom : 0 = la journée, sinon une fenêtre de N heures qui finit à zoomFin (par défaut, à la dernière mesure)
 const E = { onglet: 'sommeil', jour: null, plage: 30, mois: null, zoom: 0, zoomFin: null };
@@ -93,7 +93,9 @@ const dansJour = (serie, cle, avant = 0) => { const d0 = debutJour(cle); return 
 const DETAILS = {
   sommeil(c, cle) {
     const n = c.J.get(cle)?.nuit;
-    if (!n) return rien('Pas de nuit enregistrée pour ce jour.');
+    if (!n) return rien(!c.D.exemple && nuitMuette(c.D, cle, c.maintenant)
+      ? "Le bracelet n'a rien mesuré cette nuit-là, ni pouls ni mouvement : retiré, déchargé ou éteint. Rien n'est deviné."
+      : 'Pas de nuit enregistrée pour ce jour.');
     const obj = c.R.objectif * MIN;
     const fc = c.D.fc.filter(x => x.t >= n.debutLit && x.t <= n.finLit);
     const pendant = [
@@ -103,7 +105,8 @@ const DETAILS = {
     ];
     return panneau(`
       <div><div class="hero-fig">${duree(n.tst)}<small>de sommeil</small></div>
-      <p class="sous">Endormi à ${hm(n.debut)}, réveillé à ${hm(n.fin)} · ${n.tst >= obj ? 'objectif atteint' : `${duree(obj - n.tst)} sous ton objectif`}</p></div>
+      <p class="sous">Endormi à ${hm(n.debut)}, réveillé à ${hm(n.fin)} · ${n.tst >= obj ? 'objectif atteint' : `${duree(obj - n.tst)} sous ton objectif`}</p>
+      ${origineNuit(n) ? `<p class="note">${esc(origineNuit(n))}</p>` : ''}</div>
       ${tuiles([
         n.aDesStades && ['Profond', duree(n.stades.deep), pct(n.stades.deep / n.tst) + ' du sommeil'],
         n.aDesStades && ['Paradoxal', duree(n.stades.rem), pct(n.stades.rem / n.tst) + ' du sommeil'],

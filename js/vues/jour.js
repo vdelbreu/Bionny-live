@@ -1,14 +1,14 @@
 // Onglet Aujourd'hui, sous le direct : ta forme, puis des tuiles de chiffres (sommeil, coucher, pas, effort, cœur,
 // oxygène). Un chiffre et deux mots par tuile ; toucher une tuile ouvre sa fiche : l'explication, le conseil et
 // l'action (heure de lever, sport déclaré). Le texte n'est que dans les fiches.
-import { duree, cleJour, debutJour, siestesFaites, siestesProbables, JOUR } from '../sante.js';
+import { duree, cleJour, debutJour, siestesFaites, siestesProbables, nuitMuette, silenceBracelet, JOUR } from '../sante.js';
 import { esc, hm } from '../graphes.js';
 import { repere, decalerJour } from '../stats.js';
 import {
   conseilJour, planSommeil, effortSemaine, semaine, OBJECTIF_EFFORT, phraseCoeur, phraseSommeil, phrasePas, phraseBesoin,
   phraseAvance, etatCoeur, etatSommeil, heure, seuilsEffort,
 } from '../coach.js';
-import { $, nf, dateLongue, pastille, barreProgression, aDesDonnees, insecable } from '../ui.js';
+import { $, nf, dateLongue, pastille, barreProgression, aDesDonnees, insecable, origineNuit } from '../ui.js';
 
 const hhmm = m => { const t = ((Math.round(m) % 1440) + 1440) % 1440; return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; };
 const md = t => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
@@ -80,13 +80,14 @@ function tuileForme(c) {
 }
 
 // Siestes du jour (faites) et siestes probables à confirmer, sur les 2 derniers jours
-const siestesDuJour = c => siestesFaites(c.D).filter(x => cleJour(x.fin) === cleJour(c.maintenant));
+const siestesDuJour = c => siestesFaites(c.D, c.ns).filter(x => cleJour(x.fin) === cleJour(c.maintenant));
 const aConfirmer = c => (c.D.exemple ? [] : siestesProbables(c.D, c.ns, c.maintenant));
 
 function tuileSommeil(c) {
   const n = derniereNuit(c), plan = planSommeil(c), e = etatSommeil(n, plan);
   const sieste = siestesDuJour(c).reduce((a, x) => a + x.fin - x.debut, 0), proposees = aConfirmer(c).length;
-  const sous = proposees ? 'sieste à confirmer ?' : !n ? 'pas de nuit' : sieste ? `cette nuit · + ${duree(sieste)} de sieste` : `cette nuit · ${e.court}`;
+  const muette = !n && nuitMuette(c.D, cleJour(c.maintenant), c.maintenant), silence = !n && silenceBracelet(c.D);
+  const sous = proposees ? 'sieste à confirmer ?' : muette ? 'bracelet muet cette nuit' : silence ? `aucune mesure depuis ${heure(minutes(silence))}` : !n ? 'pas de nuit' : sieste ? `cette nuit · + ${duree(sieste)} de sieste` : `cette nuit · ${e.court}`;
   return tuile({ id: 'sommeil', label: 'Sommeil', valeur: n ? duree(n.tst) : '–', niveau: proposees ? 'moyen' : e.niveau,
     barre: n ? barreProgression(n.tst, c.R.objectif * 60e3) : '', sous });
 }
@@ -133,8 +134,10 @@ const FICHES = {
 
   sommeil(c) {
     const n = derniereNuit(c), plan = planSommeil(c), s = semaine(c);
-    const recentes = siestesFaites(c.D).filter(x => x.fin > c.maintenant - 36 * 3600e3);
-    return { titre: 'Sommeil', corps: `<p class="fiche-cle">${esc(phraseSommeil(n, plan))}</p>
+    const recentes = siestesFaites(c.D, c.ns).filter(x => x.fin > c.maintenant - 36 * 3600e3);
+    const muette = !n && !c.D.exemple && nuitMuette(c.D, cleJour(c.maintenant), c.maintenant), silence = !n && silenceBracelet(c.D);
+    const cle = muette ? MUETTE : silence ? silencieux(silence, c.D.majBracelet) : phraseSommeil(n, plan);
+    return { titre: 'Sommeil', corps: `<p class="fiche-cle">${esc(cle)}</p>
       <div class="tuiles">
         ${n ? `<div><span>Cette nuit</span><strong>${duree(n.tst)}</strong><em>${heure(minutes(n.debut))} → ${heure(minutes(n.fin))}</em></div>` : ''}
         ${n?.aDesStades ? `<div><span>Profond</span><strong>${duree(n.stades.deep)}</strong><em>répare le corps</em></div>` : ''}
@@ -203,14 +206,21 @@ const FICHES = {
   },
 };
 const minutes = t => { const d = new Date(t); return d.getHours() * 60 + d.getMinutes(); };
+// nuit sans aucune mesure (sante.js, nuitMuette) : on le dit plutôt que d'afficher une nuit vide ou devinée
+const MUETTE = "Ton bracelet n'a rien mesuré cette nuit, ni pouls ni mouvement : il était sans doute retiré, déchargé ou éteint. Porte-le chargé la nuit pour qu'elle compte.";
+const quand = t => {
+  const k = cleJour(t), jour = k === cleJour(Date.now()) ? "aujourd'hui" : k === decalerJour(cleJour(Date.now()), -1) ? 'hier' : new Date(t).toLocaleDateString('fr-FR', { weekday: 'long' });
+  return `${jour} à ${heure(minutes(t))}`;
+};
+const silencieux = (derniere, synchro) => `Aucune mesure reçue du bracelet depuis ${quand(derniere)}, et ta dernière synchro a eu lieu ${quand(synchro)} : il est peut-être déchargé, éteint ou retiré. Recharge-le et porte-le cette nuit.`;
 
-// Heure de réveil : corrigeable, avec d'où elle vient (bracelet, ton pouls, toi)
+// Heure de réveil : corrigeable, avec d'où viennent les heures (bracelet vérifié, ton pouls, toi)
 function reveilNuit(n) {
-  const note = n.finSource === 'toi' ? `Corrigé par toi, le bracelet disait ${heure(minutes(n.finBracelet))}. <button class="lien" data-action="reveil-retablir" data-nuit="${n.cle}">Rétablir</button>`
-    : n.finSource === 'pouls' ? `Corrigé : ton pouls est remonté à ${heure(minutes(n.fin))}, le bracelet disait ${heure(minutes(n.finBracelet))}.`
+  const note = n.finSource === 'toi' ? `Corrigé par toi, ${n.finAutoSource === 'pouls' ? 'ton pouls' : 'le bracelet'} disait ${heure(minutes(n.finAuto))}. <button class="lien" data-action="reveil-retablir" data-nuit="${n.cle}">Rétablir</button>`
     : n.finProvisoire ? 'Le bracelet a arrêté ta nuit au moment de la synchro : corrige si tu étais réveillé avant.' : '';
+  const origine = origineNuit(n);
   return `<label class="lever">Réveillé à <input type="time" id="reveilNuit" data-nuit="${n.cle}" value="${hhmm(minutes(n.fin))}"></label>
-    ${note ? `<p class="note">${note}</p>` : ''}`;
+    ${note ? `<p class="note">${note}</p>` : ''}${origine ? `<p class="note">${esc(origine)}</p>` : ''}`;
 }
 
 function remplirFiche(id) {

@@ -40,7 +40,7 @@ export function planSommeil(c) {
   const obj = c.R.objectif * MIN, nuits = nuits7(c);
   const moy = nuits.length ? moyenne(nuits.map(n => n.tst)) : null;
   // les siestes de la semaine réduisent la dette : le corps compte tout le sommeil des 24 h
-  const siestes = siestesFaites(c.D || {}).filter(x => x.fin > c.maintenant - 7 * JOUR && x.fin <= c.maintenant).reduce((a, x) => a + x.fin - x.debut, 0);
+  const siestes = siestesFaites(c.D || {}, c.ns).filter(x => x.fin > c.maintenant - 7 * JOUR && x.fin <= c.maintenant).reduce((a, x) => a + x.fin - x.debut, 0);
   const dette = Math.max(0, nuits.reduce((a, n) => a + obj - n.tst, 0) - siestes);
   const rattrapage = Math.min(RATTRAPAGE_MAX, Math.round(dette / MIN / 4 / 5) * 5) * MIN;
   const besoin = obj + rattrapage;
