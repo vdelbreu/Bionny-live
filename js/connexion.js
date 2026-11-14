@@ -174,7 +174,8 @@ export function lireReveils() {
   return sansDirect(async () => {
     const c = await collecter(demandesReglages.reveils(), new CollecteGros(0x2c), true, 3000);
     const liste = c.octets.length ? decoderReveils(c.octets) : null;
-    info(liste ? `réveils lus : ${liste.length}` : 'réveils : pas de réponse du bracelet');
+    const hm = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    info(liste ? `réveils lus : ${liste.map(r => `${hm(r.minutes)} j[${r.jours.join('')}] ${r.actif ? 'actif' : 'coupé'} « ${r.nom} »`).join(', ') || 'aucun'}` : 'réveils : pas de réponse du bracelet');
     return liste;
   });
 }

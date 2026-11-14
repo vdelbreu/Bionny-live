@@ -81,7 +81,7 @@ function tuileForme(c) {
 
 // Siestes du jour (faites) et siestes probables à confirmer, sur les 2 derniers jours
 const siestesDuJour = c => siestesFaites(c.D, c.ns).filter(x => cleJour(x.fin) === cleJour(c.maintenant));
-const aConfirmer = c => (c.D.exemple ? [] : siestesProbables(c.D, c.ns, c.maintenant));
+const aConfirmer = c => (c.D.exemple ? [] : siestesProbables(c.D, c.ns, c.maintenant, 2, c.R.seuilEveil));
 
 function tuileSommeil(c) {
   const n = derniereNuit(c), plan = planSommeil(c), e = etatSommeil(n, plan);

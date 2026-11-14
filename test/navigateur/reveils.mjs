@@ -46,6 +46,12 @@ ok('dimanche ajouté aux jours du rappel', (await js(`document.querySelector('#l
 
 await clic('[data-action="vibrer"]'); await attendre(600);
 ok('tester le vibreur', (await ble()).ecrits.includes('50 55') && /vibrer/.test(await texte('#toast')), await texte('#toast'));
+await clic('[data-action="essai-reveil"]'); await attendre(4000);
+liste = await reveilsDuBracelet();
+const dans3 = await js(`(() => { const t = new Date(Date.now() - 4000 + 3 * 60e3); return t.getHours() * 60 + t.getMinutes(); })()`);
+ok('réveil d’essai : écrit dans le bracelet 3 min plus tard, les autres gardés', liste.some(x => x === `actif ${dans3} Essai`) && liste.length === 6 && /doit vibrer/.test(await texte('#toast')),
+  `${liste.join(' / ')} | ${await texte('#toast')}`);
+ok('réveil d’essai noté dans le journal', /essai de réveil à/.test(await js(`(async () => (await import('/js/connexion.js')).journal())()`)));
 await js(`(() => { const i = document.querySelector('#vibNotifs'); i.checked = true; i.dispatchEvent(new Event('change', { bubbles: true })); })()`); await attendre(200);
 ok('notifications : explication et marche à suivre affichées', !(await js(`document.querySelector('#aideNotifs').hidden`)));
 await js(`document.querySelector('#carteReveils').scrollIntoView()`); await attendre(200);

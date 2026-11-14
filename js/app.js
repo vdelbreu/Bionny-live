@@ -1,12 +1,12 @@
 // ViaWrist : point d'entrée. Stockage, réglages, navigation, imports (bracelet, sauvegarde, raccourci Santé), rendu des vues.
-import { parseImport, fusionner, vide, nuits as calculerNuits, nuitMuette, lireHash, cleJour, debutJour, duree, JOUR } from './sante.js';
+import { parseImport, fusionner, vide, nuits as calculerNuits, nuitMuette, SEUIL_EVEIL, lireHash, cleJour, debutJour, duree, JOUR } from './sante.js';
 import { impExemple } from './exemple.js';
 import { initInfobulles, hm } from './graphes.js';
 import { fcMaxTanaka } from './coeur.js';
 import { journees, fiabilite } from './stats.js';
 import { seanceDeclaree, planSommeil, heure, matinSuivant, JOURS } from './coach.js';
 import { initLive, majAge, synchroniserBracelet, connecterBracelet, chercherBracelet, enDirect, lancerDemo } from './live.js';
-import { journal, mettreALHeure, lireReveils, ecrireReveils, vibrer, verifierMesuresAuto } from './connexion.js';
+import { journal, info, mettreALHeure, lireReveils, ecrireReveils, vibrer, verifierMesuresAuto } from './connexion.js';
 import { reveilsVoulus, memesReveils, rappelsImportes, tropDeReveils, joursCourts } from './reveil.js';
 import { $, nf, toast } from './ui.js';
 import { rendreJour, brancherFiches } from './vues/jour.js';
@@ -18,8 +18,9 @@ const ANCIENNES = { direct: 'jour', semaine: 'donnees', bilan: 'coach' };
 // objectif en minutes ; leverJours = heure de lever « HH:MM » par jour de la semaine (0 = dimanche), selon tes cours ;
 // reveil = ancienne heure unique, gardée seulement le temps de la reporter sur un jour
 // santeJusqua = date de la dernière mesure de pouls envoyée vers Apple Santé
+// seuilEveil = ton pouls d'éveil : au-dessus tu es éveillé, en dessous tu dors (ta règle, sante.js)
 // vibreur = réveils écrits dans le bracelet (voir reveil.js) ; notifs = appels et messages, désactivé de base
-const R = { prenom: '', age: 25, fcmaxMesuree: null, objectif: 480, objectifPas: 8000, reveil: null, leverJours: {}, santeJusqua: null,
+const R = { prenom: '', age: 25, fcmaxMesuree: null, objectif: 480, objectifPas: 8000, seuilEveil: SEUIL_EVEIL, reveil: null, leverJours: {}, santeJusqua: null,
   vibreur: { reveil: false, coucher: false, rappels: [], importe: false }, notifs: false, raccourci: 'ViaWrist' };
 let D = vide(), cache = null, vue = 'jour', pasDirect = null;
 
@@ -61,7 +62,7 @@ function reglagesValides(r) {
   return Object.fromEntries(Object.entries({
     prenom: typeof r.prenom === 'string' ? r.prenom.slice(0, 30) : null,
     age: n(r.age, 10, 99), fcmaxMesuree: n(r.fcmaxMesuree, 120, 230), objectif: n(r.objectif, 240, 720),
-    objectifPas: n(r.objectifPas, 1000, 40000), reveil: typeof r.reveil === 'string' && HEURE.test(r.reveil) ? r.reveil : null,
+    objectifPas: n(r.objectifPas, 1000, 40000), seuilEveil: n(r.seuilEveil, 45, 100), reveil: typeof r.reveil === 'string' && HEURE.test(r.reveil) ? r.reveil : null,
     leverJours: r.leverJours && typeof r.leverJours === 'object'
       ? Object.fromEntries(Object.entries(r.leverJours).filter(([j, h]) => /^[0-6]$/.test(j) && typeof h === 'string' && HEURE.test(h))) : null,
     raccourci: typeof r.raccourci === 'string' && r.raccourci.trim() ? r.raccourci.slice(0, 40) : null,
@@ -104,7 +105,7 @@ const fcMaxCourante = () => R.fcmaxMesuree || fcMaxTanaka(R.age);
 // Variabilité et stress sont calculés par le bracelet : on ne les montre que s'ils passent le contrôle de vraisemblance
 function contexte() {
   if (!cache) {
-    let ns = calculerNuits(D);
+    let ns = calculerNuits(D, { seuil: R.seuilEveil });
     const fiab = fiabilite(D, ns);
     if (!fiab.vfc.fiable) ns = ns.map(n => ({ ...n, vfcNuit: null }));
     const J = journees(D, ns, fcMaxCourante());
@@ -309,6 +310,22 @@ function modifierVibreur(f) {
   clearTimeout(envoiReveils);
   envoiReveils = setTimeout(() => synchroniserReveils().catch(e => { etatReveils = `Envoi impossible (${e.message}).`; rendreReveils(); }), 1200);
 }
+// Réveil d'essai : une alarme dans 2 à 3 min, pour voir si le bracelet vibre bien à l'heure ; retirée 10 min après
+let essaiReveil = null;
+const avecEssai = liste => (essaiReveil && Date.now() < essaiReveil.jusqua
+  ? [...liste.slice(0, 9), { minutes: essaiReveil.minutes, jours: essaiReveil.jours, actif: true, nom: 'Essai' }] : liste);
+async function essayerReveil() {
+  if (!enDirect()) return toast("Connecte le bracelet d'abord.");
+  const t = new Date(Date.now() + 3 * 60e3); t.setSeconds(0, 0);
+  essaiReveil = { minutes: t.getHours() * 60 + t.getMinutes(), jours: [t.getDay()], jusqua: t.getTime() + 10 * 60e3 };
+  info(`essai de réveil à ${hm(t.getTime())} (${JOURS[t.getDay()]})`);
+  reveilsNonGeres = false;
+  await synchroniserReveils();
+  toast(/Enregistré|À jour/.test(etatReveils)
+    ? `Réveil d'essai à ${hm(t.getTime())}, enregistré dans le bracelet : il doit vibrer. Sinon, envoie le journal Bluetooth (Réglages → Avancé).`
+    : `Réveil d'essai pas confirmé par le bracelet. ${etatReveils}`);
+  setTimeout(() => { essaiReveil = null; synchroniserReveils().catch(() => {}); }, essaiReveil.jusqua - Date.now());
+}
 async function synchroniserReveils() {
   if (!enDirect()) { etatReveils = 'Sera envoyé au bracelet à la prochaine connexion.'; rendreReveils(); return; }
   if (reveilsNonGeres) return;   // déjà sans réponse dans cette session : pas 3 s d'attente à chaque retour sur l'app
@@ -320,7 +337,7 @@ async function synchroniserReveils() {
     R.vibreur.importe = true;
     sauverReglages();
   }
-  const voulus = reveilsVoulus(R, planSommeil(contexte()), Date.now());
+  const voulus = avecEssai(reveilsVoulus(R, planSommeil(contexte()), Date.now()));
   if (!memesReveils(voulus, lus)) {
     await ecrireReveils(voulus);
     const relus = await lireReveils();
@@ -376,6 +393,7 @@ function rendreReglages() {
   $('#age').value = R.age;
   $('#objectif').value = R.objectif / 60;
   $('#objectifPas').value = R.objectifPas;
+  $('#seuilEveil').value = R.seuilEveil;
   $('#fcmaxMesuree').value = R.fcmaxMesuree ?? '';
   $('#fcmaxMesuree').placeholder = String(fcMaxTanaka(R.age));
   $('#fcmaxNote').textContent = R.fcmaxMesuree ? 'ta valeur mesurée' : `vide : estimée à ${fcMaxTanaka(R.age)} bpm`;
@@ -390,11 +408,11 @@ function rendreReglages() {
     : `${nom} : ${f.fiable ? 'affiché' : 'non affiché'}${e}. Pendant ton sommeil ${Math.round(f.nuit)}${unite}, éveillé ${Math.round(f.jour)}${unite} ; lien avec ton pouls ${f.r >= 0 ? '+' : '−'}${Math.abs(f.r).toFixed(2).replace('.', ',')} (${attendu}).`;
   // nuits des 30 derniers jours, selon d'où viennent leurs heures (sante.js, nuits)
   const ns30 = c.ns.filter(n => n.tst && n.fin > Date.now() - 30 * JOUR);
-  const etat = n => n.source === 'pouls' ? 'pouls' : n.debutSource === 'pouls' || n.finSource === 'pouls' || n.finAutoSource === 'pouls' ? 'corrigee' : n.controle === 'confirmee' ? 'confirmee' : 'nonVerifiee';
+  const etat = n => n.source === 'pouls' ? 'pouls' : n.controle === 'confirmee' ? (n.debutSource === 'pouls' || n.finSource === 'pouls' ? 'corrigee' : 'confirmee') : 'nonVerifiee';
   const nb = e => ns30.filter(n => etat(n) === e).length;
   const sommeil = ns30.length ? `Sommeil, ${ns30.length} nuit${ns30.length > 1 ? 's' : ''} sur 30 jours : ` + [
-    [nb('confirmee'), 'du bracelet confirmée(s) par ton pouls'], [nb('corrigee'), 'du bracelet corrigée(s) au pouls'],
-    [nb('pouls'), 'prise(s) sur ton pouls (bracelet muet ou contredit)'], [nb('nonVerifiee'), 'du bracelet non vérifiée(s), trop peu de relevés de pouls'],
+    [nb('confirmee'), 'où ton pouls et le bracelet s\'accordent'], [nb('corrigee'), 'aux heures de ton pouls, phases du bracelet'],
+    [nb('pouls'), 'au pouls seul (bracelet muet ou ailleurs)'], [nb('nonVerifiee'), 'aux heures du bracelet (pas assez de pouls)'],
   ].filter(([k]) => k).map(([k, t]) => `${k} ${k > 1 ? t.replace(/\(s\)/g, 's') : t.replace(/\(s\)/g, '')}`).join(', ') + '.' : 'Sommeil : pas encore de nuit à vérifier.';
   // nuits où le bracelet n'a rien mesuré (retiré, déchargé, éteint) : ni comptées ni devinées, mais dites
   const muettes = Array.from({ length: 30 }, (_, k) => cleJour(Date.now() - k * JOUR))
@@ -473,6 +491,7 @@ function demarrer() {
     if (action === 'chercher') chercherBracelet();
     if (action === 'sante') envoyerSante();
     if (action === 'vibrer') testerVibreur();
+    if (action === 'essai-reveil') essayerReveil();
     if (action === 'rappel-ajouter') modifierVibreur(v => { v.rappels.push({ minutes: 12 * 60, jours: [1, 2, 3, 4, 5], actif: true, nom: 'Rappel' }); });
     if (action === 'rappel-suppr') { const i = +e.target.closest('[data-rappel]').dataset.rappel; modifierVibreur(v => { v.rappels.splice(i, 1); }); }
     const jourRappel = e.target.closest('[data-rappel] [data-jour-rappel]');
@@ -548,6 +567,7 @@ function demarrer() {
   reglage('#fcmaxMesuree', v => { if (!v.trim()) return { fcmaxMesuree: null }; const f = parseInt(v); return f >= 120 && f <= 230 ? { fcmaxMesuree: f } : undefined; });
   reglage('#objectif', v => { const h = parseFloat(String(v).replace(',', '.')); return h >= 4 && h <= 12 ? { objectif: Math.round(h * 60) } : undefined; });
   reglage('#objectifPas', v => { const p = parseInt(v); return p >= 1000 && p <= 40000 ? { objectifPas: p } : undefined; });
+  reglage('#seuilEveil', v => { const s = parseInt(v); return s >= 45 && s <= 100 ? { seuilEveil: s } : undefined; });
 
   addEventListener('hashchange', () => {
     const brut = lireHash(location.hash);

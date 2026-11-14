@@ -1,4 +1,4 @@
-// Fiche Sommeil : réveil corrigé au pouls puis à la main, sieste proposée puis confirmée, sieste déclarée par-dessus
+// Fiche Sommeil : réveil d'après ton pouls (au-dessus de 65) puis corrigé à la main, sieste proposée puis confirmée, sieste déclarée par-dessus
 // (elle remplace l'autre), puis supprimée. Données : dernière matinée à 8 h 10, pouls remonté 10 min avant, creux à 14 h.
 import { ouvrirChrome, attendre } from './cdp.mjs';
 
@@ -22,7 +22,7 @@ await p.aller('/index.html');
 
 ok('tuile : sieste à confirmer signalée', /sieste à confirmer/.test(await texte('[data-fiche="sommeil"] .tuile-sous')), await texte('[data-fiche="sommeil"] .tuile-sous'));
 await clic('[data-fiche="sommeil"]'); await attendre(300);
-ok('fiche : réveil du bracelet gardé tel quel (8 h 10)', /^08:10$/.test(await js(`document.querySelector('#reveilNuit').value`)) && !/pouls est remonté/.test(await texte('#ficheCorps') || ''), await js(`document.querySelector('#reveilNuit').value`));
+ok("fiche : réveil d'après ton pouls, au-dessus de 65 à 8 h (le bracelet disait 8 h 10)", /^08:00$/.test(await js(`document.querySelector('#reveilNuit').value`)) && /te disait réveillé à 8\sh\s10/.test(await texte('#ficheCorps') || ''), await js(`document.querySelector('#reveilNuit').value`));
 const nuitAvant = await texte('#ficheCorps .tuiles strong');
 ok('fiche : sieste proposée', /Sieste de/.test(await texte('.sieste-proposee') || ''), await texte('.sieste-proposee span'));
 await p.photo('sommeil-fiche');
@@ -34,7 +34,7 @@ await p.saisir('#reveilNuit', '07:30'); await attendre(300);
 ok('réveil corrigé par toi', /Corrigé par toi/.test(await texte('#ficheCorps .note') || '') && (await texte('#ficheCorps .tuiles strong')) !== nuitAvant,
   `nuit ${nuitAvant} → ${await texte('#ficheCorps .tuiles strong')}`);
 await clic('[data-action="reveil-retablir"]'); await attendre(300);
-ok('rétablir : retour à l’heure du bracelet', (await js(`document.querySelector('#reveilNuit').value`)) === '08:10');
+ok('rétablir : retour à l’heure de ton pouls', (await js(`document.querySelector('#reveilNuit').value`)) === '08:00');
 
 await js(`document.querySelector('#formSieste').open = true`);
 await clic('#formSieste [data-duree="20"]');

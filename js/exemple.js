@@ -51,7 +51,7 @@ export function texteExemple(maintenant = Date.now()) {
 
   // FC toutes les 5 min : plus basse la nuit, une sortie sportive un jour sur deux vers 18 h
   const fc = [], vfc = [], spo2 = [];
-  for (let t = j0.getTime() - 11 * JOUR; t <= maintenant; t += 5 * MIN) {
+  for (let t = j0.getTime() - 11 * JOUR + 18 * H; t <= maintenant; t += 5 * MIN) {   // dès le soir de la première nuit
     const n = nuits.find(x => t >= x.debut && t <= x.fin);
     const h = new Date(t).getHours() + new Date(t).getMinutes() / 60;
     let v;

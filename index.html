@@ -144,6 +144,7 @@
         <div class="actions">
           <button class="petit" data-action="rappel-ajouter">Ajouter un rappel</button>
           <button class="petit" data-action="vibrer">Tester le vibreur</button>
+          <button class="petit" data-action="essai-reveil">Essayer un réveil dans 3 min</button>
         </div>
         <p class="note">Enregistrés dans le bracelet : il vibre même téléphone éteint. La durée et la force de la vibration sont fixées par le bracelet. 10 au plus.</p>
       </article>
@@ -179,6 +180,7 @@
         <div class="champs">
           <label class="field"><span>Sommeil</span><input id="objectif" type="number" inputmode="decimal" min="5" max="11" step="0.5"><span class="note">heures par nuit</span></label>
           <label class="field"><span>Pas</span><input id="objectifPas" type="number" inputmode="numeric" min="1000" max="40000" step="500"><span class="note">par jour</span></label>
+          <label class="field"><span>Pouls d'éveil</span><input id="seuilEveil" type="number" inputmode="numeric" min="45" max="100" step="1"><span class="note">bpm : au-dessus, tu es éveillé ; en dessous, tu dors</span></label>
         </div>
         <p class="note">Tes heures de lever, jour par jour, se règlent dans l'onglet Réveil.</p>
       </article>
@@ -244,7 +246,7 @@
           <details>
             <summary>D'où viennent les chiffres</summary>
             <dl class="methodes">
-              <dt>Sommeil</dt><dd>Nuits notées par le bracelet, vérifiées par ton pouls (un relevé toutes les 5 min). Ton pouls de sommeil : le 10e centile de tes relevés des 7 derniers jours. Une nuit est confirmée si 60 % de ses relevés au moins sont à ce niveau (+ 10 bpm), ou si ton pouls y est au moins 5 bpm plus bas que pendant les 6 h d'éveil autour. Sinon, ou si le bracelet n'a rien noté, les heures viennent de ton pouls : endormi quand il reste 20 min sous ton pouls de sommeil + 5, réveillé quand il passe 15 min au-dessus de + 12. Un début ou une fin que ton pouls contredit (45 min d'éveil au moins) est corrigé ; une nuit coupée alors que ton pouls reste celui du sommeil (1 h au moins, sans marcher) est prolongée. Le bracelet renvoie parfois une ancienne nuit sous une autre date (mêmes phases, même heure) : elle est écartée. Une nuit où il n'a presque rien mesuré (retiré, déchargé ou éteint) n'est ni comptée ni devinée, elle est signalée. Chaque nuit dit d'où viennent ses heures. Les phases au poignet sont des estimations : fie-toi surtout à la durée et aux horaires.</dd>
+              <dt>Sommeil</dt><dd>Ta règle, avec ton pouls relevé toutes les 5 min : au-dessus de ton pouls d'éveil (65 bpm, réglable dans Objectifs), tu es éveillé ; en dessous, tu dors. Un seul relevé au-dessus pendant la nuit est un rêve ; 10 min au-dessus ou plusieurs pics rapprochés, tu t'es réveillé. Ta nuit part de ton plus long sommeil entre minuit et 7 h ; avant lui, ce qui en est séparé par plus de 30 min d'éveil est du calme du soir. Après lui, tu te rendors en moins de 30 min (ou en moins d'1 h pour 1 h au moins) : c'est un réveil dans la nuit, compté éveillé ; sinon, ou si tu as marché (250 pas dans l'heure), tu es levé. Les phases (profond, paradoxal) viennent du bracelet, entre ces heures. Sans assez de pouls, ce sont les heures du bracelet, écartées si ton pouls les contredit. Le bracelet renvoie parfois une ancienne nuit sous une autre date (mêmes phases, même heure) : elle est écartée. Une nuit où il n'a presque rien mesuré (retiré, déchargé ou éteint) n'est ni comptée ni devinée, elle est signalée. Chaque nuit dit d'où viennent ses heures.</dd>
               <dt>Heure de coucher</dt><dd>Ton heure de lever − ton besoin − 15 min pour t'endormir. Besoin = objectif + un quart de la dette des 7 dernières nuits (1 h au plus). Si c'est loin de ton habitude, on avance de 30 min à la fois.</dd>
               <dt>FC de repos</dt><dd>Moyenne des 10 % de relevés les plus bas pendant ton sommeil.</dd>
               <dt>Récupération</dt><dd>Ta dernière nuit face à ton objectif, et ta FC de repos face à tes 14 nuits précédentes. Indicatif, pas un avis médical.</dd>

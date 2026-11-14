@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseDate, parseNum, stade, parseImport, lireHash, fusionner, vide, union, soustraire, total,
-  analyseNuit, nuits, recuperation, resume, reveilAuPouls, siestesFaites, siestesProbables, sansCopies, nuitMuette, silenceBracelet,
+  analyseNuit, nuits, recuperation, resume, siestesFaites, siestesProbables, sansCopies, nuitMuette, silenceBracelet,
   MIN, H, JOUR,
 } from '../js/sante.js';
 import { texteExemple } from '../js/exemple.js';
@@ -172,24 +172,35 @@ test('les données d\'exemple passent sans avertissement et donnent un verdict',
 
 /* ---------- Réveil corrigé et siestes ---------- */
 
-// nuit de 0 h à 8 h 10 (le bracelet s'arrête à la synchro de 8 h 10), pouls de 54 la nuit
-function nuitReveil({ pouls = [], synchro = null, reveils = {} } = {}) {
-  const t0 = new Date(2026, 9, 21, 0, 0).getTime(), fin = t0 + 8 * H + 10 * MIN;
+// nuit de 0 h à 8 h 10 (le bracelet s'arrête à la synchro de 8 h 10), pouls de 54 la nuit. leve : à partir de cette
+// heure et jusqu'à 10 h, pouls de 75 (tu es levé) ; sans leve, pas de relevé après la nuit
+function nuitReveil({ pouls = [], synchro = null, reveils = {}, leve = null } = {}) {
+  const t0 = new Date(2026, 9, 21, 0, 0).getTime(), fin = t0 + 8 * H + 10 * MIN, a = (hhmm, t = t0) => { const [h, m] = hhmm.split(':').map(Number); return t + h * H + m * MIN; };
   const fc = [];
-  for (let t = t0; t < fin; t += 5 * MIN) fc.push({ t, v: 54 });
-  for (const [hhmm, v] of pouls) { const [h, m] = hhmm.split(':').map(Number); const t = t0 + h * H + m * MIN; const x = fc.find(y => y.t === t); if (x) x.v = v; }
+  for (let t = t0; t < (leve ? t0 + 10 * H : fin); t += 5 * MIN) fc.push({ t, v: leve && t >= a(leve) ? 75 : 54 });
+  for (const [hhmm, v] of pouls) { const x = fc.find(y => y.t === a(hhmm)); if (x) x.v = v; }
   return { ...vide(), sommeil: [{ s: t0, e: fin, k: 'core' }], fc, synchros: synchro ? [synchro] : [], reveils };
 }
 
-test("nuits : l'heure de réveil reste celle du bracelet, même si le pouls remonte avant (comme l'app Bionny)", () => {
-  const d = nuitReveil({ pouls: [['08:00', 75], ['08:05', 72]] });
-  const n = nuits(d)[0];
-  assert.equal(n.finSource, 'bracelet');
-  assert.equal(n.fin, n.finBracelet);
-  assert.equal(new Date(n.fin).getMinutes(), 10);                // 8 h 10, comme le bracelet
-  // la détection au pouls existe toujours, mais n'est plus appliquée
-  assert.equal(new Date(reveilAuPouls(n, d.fc)).getHours(), 8);
-  assert.equal(reveilAuPouls(nuits(nuitReveil({ pouls: [['07:30', 85], ['07:35', 55]] }))[0], []), null);
+test('ta règle : au-dessus de 65 tu es éveillé ; un pic isolé la nuit est un rêve, tu dors', () => {
+  const n = nuits(nuitReveil({ pouls: [['03:00', 80]], leve: '07:30' }))[0];
+  assert.deepEqual([hm(n.debut), hm(n.fin), n.finSource, hm(n.finBracelet)], ['00:00', '07:30', 'pouls', '08:10']);
+  assert.equal(n.reveils, 0);
+  assert.equal(n.tst, 7.5 * H);
+  assert.equal(n.stades.core, 7.5 * H);                          // les phases du bracelet, entre tes heures
+});
+
+test('ta règle : 20 min au-dessus de 65 puis rendormi, un réveil dans la nuit compté éveillé', () => {
+  const n = nuits(nuitReveil({ pouls: [['03:00', 75], ['03:05', 78], ['03:10', 74], ['03:15', 70]], leve: '07:30' }))[0];
+  assert.deepEqual([hm(n.debut), hm(n.fin)], ['00:00', '07:30']);
+  assert.equal(n.reveils, 1);
+  assert.equal(n.tst, 7.5 * H - 20 * MIN);
+});
+
+test('ta règle : le matin, plusieurs pics au-dessus de 65, tu es levé', () => {
+  const pics = [['06:30', 70], ['06:35', 60], ['06:40', 72], ['06:45', 58], ['06:50', 75], ['06:55', 61], ['07:00', 71], ['07:05', 66]];
+  const n = nuits(nuitReveil({ pouls: pics, leve: '07:30' }))[0];
+  assert.equal(hm(n.fin), '06:30');                              // le calme de 7 h 10 à 7 h 30 ne prolonge pas la nuit
 });
 
 test('réveil corrigé par toi : il passe avant le pouls, et peut aussi prolonger la nuit', () => {
@@ -265,12 +276,12 @@ function dixNuits({ pouls11 = null, dort = (t) => new Date(t).getHours() < 8 } =
 const nuit11 = d => nuits(d).find(n => n.cle === '2026-10-11');
 const sans11 = d => { d.sommeil = d.sommeil.filter(x => x.s < le(11, 0) - 2 * H); return d; };
 
-test('nuit du bracelet confirmée par le pouls : ses heures sont gardées telles quelles', () => {
+test('ton pouls et le bracelet d\'accord : mêmes heures, phases du bracelet', () => {
   const n = nuit11(dixNuits());
   assert.equal(n.source, 'bracelet');
   assert.equal(n.controle, 'confirmee');
   assert.deepEqual([hm(n.debut), hm(n.fin), n.debutSource, n.finSource], ['00:00', '08:00', 'bracelet', 'bracelet']);
-  assert.equal(n.partCalme, 100);
+  assert.equal(n.stades.core, 8 * H);
 });
 
 test("nuit absente du bracelet : heures prises sur le pouls, sans phases", () => {
@@ -280,9 +291,9 @@ test("nuit absente du bracelet : heures prises sur le pouls, sans phases", () =>
   assert.ok(Math.abs(n.debut - le(11, 0)) <= 10 * MIN, hm(n.debut));
   assert.ok(Math.abs(n.fin - le(11, 8)) <= 10 * MIN, hm(n.fin));
   assert.equal(n.aDesStades, false);
-  // sans 2 jours de relevés avant, rien n'est deviné
-  const debut = dixNuits(); debut.fc = debut.fc.filter(x => x.t >= le(10, 0)); debut.sommeil = [];
-  assert.equal(nuits(debut).length, 0);
+  // sans relevé de pouls cette nuit-là, rien n'est deviné
+  const sans = sans11(dixNuits()); sans.fc = sans.fc.filter(x => x.t < le(10, 12));
+  assert.equal(nuit11(sans), undefined);
 });
 
 test('nuit du bracelet contredite par le pouls (placée pendant que tu étais éveillé) : remplacée par la nuit au pouls', () => {
@@ -304,10 +315,11 @@ test('nuit coupée alors que le pouls reste celui du sommeil : prolongée jusqu\
   assert.equal(hm(n.finBracelet), '03:00');
   assert.ok(Math.abs(n.fin - le(11, 8)) <= 10 * MIN, hm(n.fin));
   assert.equal(n.stades.deep, 3 * H);                            // les phases du bracelet restent
-  // pouls d'éveil juste après la coupure : tu t'étais réveillé, rien n'est ajouté
+  // éveillé 30 min à la coupure puis rendormi : un réveil dans la nuit, la nuit continue
   const reveille = sans11(dixNuits({ dort: t => new Date(t).getHours() < 8 && (t < le(11, 3) || t >= le(11, 3, 30)) }));
   reveille.sommeil.push({ s: le(11, 0), e: le(11, 3), k: 'deep' });
-  assert.equal(nuit11(reveille).fin, le(11, 3));
+  const r = nuit11(reveille);
+  assert.deepEqual([hm(r.fin), r.reveils, r.tst], ['08:00', 1, 7.5 * H]);
 });
 
 test('début contredit : le bracelet te dit endormi à 22 h, ton pouls reste celui de l\'éveil jusqu\'à minuit', () => {
@@ -321,11 +333,14 @@ test('début contredit : le bracelet te dit endormi à 22 h, ton pouls reste cel
   assert.equal(n.tst, 8 * H);
 });
 
-test('nuit de fièvre (pouls haut toute la nuit) : gardée, elle reste nettement sous le pouls de la journée', () => {
+test('nuit au pouls haut mais sous ton seuil (64 à 66, un pic isolé à 66) : une nuit', () => {
   const n = nuit11(dixNuits({ pouls11: i => 64 + (i % 3) }));
   assert.equal(n.source, 'bracelet');
   assert.equal(n.controle, 'confirmee');
-  assert.deepEqual([hm(n.debut), hm(n.fin)], ['00:00', '08:00']);
+  // un 66 collé à l'éveil (avant minuit ou au réveil) fait partie des pics de l'éveil
+  assert.ok(Math.abs(n.debut - le(11, 0)) <= 15 * MIN, hm(n.debut));
+  assert.ok(Math.abs(n.fin - le(11, 8)) <= 20 * MIN, hm(n.fin));
+  assert.ok(n.tst > 7 * H);
   assert.ok(n.fcNuit.repos >= 64);
 });
 
@@ -411,4 +426,16 @@ test('nuit muette : le bracelet a mesuré la veille et le matin, rien la nuit ; 
   assert.equal(nuitMuette(avant, '2026-10-11', apres), false);
   assert.equal(silenceBracelet({ ...avant, majBracelet: le(10, 23, 30) }), null);
   assert.equal(hm(silenceBracelet({ ...avant, majBracelet: le(11, 9) })), '22:55');
+});
+
+test('ta règle, en journée : au moins 30 min sous 65 sans marcher, une sieste à proposer ; 25 min, non', () => {
+  const d = journee(), soir = new Date(2026, 9, 21, 20).getTime();
+  // 25 min seulement sous 65 (14 h à 14 h 25) : pas de sieste ; un pic isolé à 14 h 20 n'interrompt rien
+  const court = journee();
+  court.fc = court.fc.map(x => { const h = new Date(x.t).getHours(), m = new Date(x.t).getMinutes(); return h === 14 && m >= 25 && m < 40 ? { ...x, v: 75 } : x; });
+  assert.equal(siestesProbables(court, nuits(court), soir).length, 0);
+  d.fc = d.fc.map(x => (new Date(x.t).getHours() === 14 && new Date(x.t).getMinutes() === 20 ? { ...x, v: 80 } : x));
+  assert.deepEqual(siestesProbables(d, nuits(d), soir).map(p => [hm(p.debut), hm(p.fin)]), [['14:00', '14:40']]);
+  // ton seuil se règle : à 50, ce creux à 55 n'est plus du sommeil
+  assert.equal(siestesProbables(journee(), nuits(journee()), soir, 2, 50).length, 0);
 });
