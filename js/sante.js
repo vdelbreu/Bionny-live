@@ -405,10 +405,10 @@ function pasParHeure(activite = []) {
 const pasMax = (pasH, a, b) => { let m = 0; for (let h = Math.floor(a / H); h <= Math.floor((b - 1) / H); h++) m = Math.max(m, pasH.get(h) || 0); return m; };
 
 /* ---------- Ta règle : au-dessus de ton seuil d'éveil, tu es éveillé ---------- */
-// Donnée par toi le 14/11 : au-dessus de 65 bpm tu es éveillé, en dessous tu dors. Un pic juste au-dessus pendant la
+// Donnée par toi le 14/11 (65 bpm, abaissée à 60 le 16/11) : au-dessus de 60 bpm tu es éveillé, en dessous tu dors. Un pic juste au-dessus pendant la
 // nuit est un rêve ; plus long, tu t'es réveillé ; le matin, plusieurs pics veulent dire que tu es levé ; la journée,
 // longtemps en dessous, c'est peut-être une sieste. Le seuil se règle dans Réglages.
-export const SEUIL_EVEIL = 65;
+export const SEUIL_EVEIL = 60;
 // Tes horaires (14/11) : endormi entre 23 h et 2 h, levé entre 7 h et 10 h. À 1 h près, ce qui finit avant 22 h ne
 // commence pas ta nuit (calme du soir) et ce qui commence après 11 h ne la prolonge pas (sieste à proposer).
 const SOIR_TOT = 22, MATIN_TARD = 11;

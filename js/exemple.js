@@ -46,7 +46,7 @@ export function texteExemple(maintenant = Date.now()) {
       cycle++;
     }
     som.push([lit, t + (4 + r() * 12) * MIN, 'Au lit']);
-    nuits.push({ debut: coucher, fin: t, k, base: 50 + r() * 4 + (k === 0 ? 4 : 0) });
+    nuits.push({ debut: coucher, fin: t, k, base: 49 + r() * 3 + (k === 0 ? 3 : 0) });   // sous 60 toute la nuit (seuil d'éveil)
   }
 
   // FC toutes les 5 min : plus basse la nuit, une sortie sportive un jour sur deux vers 18 h
@@ -57,7 +57,7 @@ export function texteExemple(maintenant = Date.now()) {
     let v;
     if (n) {
       const p = (t - n.debut) / (n.fin - n.debut);
-      v = n.base + 24 * (p - .45) ** 2 + (r() - .5) * 3;
+      v = n.base + 10 * (p - .45) ** 2 + (r() - .5) * 3;
     } else {
       v = 70 + 6 * Math.sin((h - 9) / 24 * 2 * Math.PI) + (r() - .5) * 6;
       const jour = Math.floor((t - j0.getTime()) / JOUR);

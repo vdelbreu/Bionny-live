@@ -18,7 +18,8 @@ const ANCIENNES = { direct: 'jour', semaine: 'donnees', bilan: 'coach' };
 // objectif en minutes ; leverJours = heure de lever « HH:MM » par jour de la semaine (0 = dimanche), selon tes cours ;
 // reveil = ancienne heure unique, gardée seulement le temps de la reporter sur un jour
 // santeJusqua = date de la dernière mesure de pouls envoyée vers Apple Santé
-// seuilEveil = ton pouls d'éveil : au-dessus tu es éveillé, en dessous tu dors (ta règle, sante.js)
+// seuilEveil = ton pouls d'éveil : au-dessus tu es éveillé, en dessous tu dors (ta règle, sante.js) ; gardé seulement
+// si tu l'as réglé toi-même (seuilRegle), sinon la valeur par défaut
 // vibreur = réveils écrits dans le bracelet (voir reveil.js) ; notifs = appels et messages, désactivé de base
 const R = { prenom: '', age: 25, fcmaxMesuree: null, objectif: 480, objectifPas: 8000, seuilEveil: SEUIL_EVEIL, reveil: null, leverJours: {}, santeJusqua: null,
   vibreur: { reveil: false, coucher: false, rappels: [], importe: false }, notifs: false, raccourci: 'ViaWrist' };
@@ -62,7 +63,7 @@ function reglagesValides(r) {
   return Object.fromEntries(Object.entries({
     prenom: typeof r.prenom === 'string' ? r.prenom.slice(0, 30) : null,
     age: n(r.age, 10, 99), fcmaxMesuree: n(r.fcmaxMesuree, 120, 230), objectif: n(r.objectif, 240, 720),
-    objectifPas: n(r.objectifPas, 1000, 40000), seuilEveil: n(r.seuilEveil, 45, 100), reveil: typeof r.reveil === 'string' && HEURE.test(r.reveil) ? r.reveil : null,
+    objectifPas: n(r.objectifPas, 1000, 40000), seuilEveil: r.seuilRegle === true ? n(r.seuilEveil, 45, 100) : null, seuilRegle: r.seuilRegle === true ? true : null, reveil: typeof r.reveil === 'string' && HEURE.test(r.reveil) ? r.reveil : null,
     leverJours: r.leverJours && typeof r.leverJours === 'object'
       ? Object.fromEntries(Object.entries(r.leverJours).filter(([j, h]) => /^[0-6]$/.test(j) && typeof h === 'string' && HEURE.test(h))) : null,
     raccourci: typeof r.raccourci === 'string' && r.raccourci.trim() ? r.raccourci.slice(0, 40) : null,
@@ -567,7 +568,7 @@ function demarrer() {
   reglage('#fcmaxMesuree', v => { if (!v.trim()) return { fcmaxMesuree: null }; const f = parseInt(v); return f >= 120 && f <= 230 ? { fcmaxMesuree: f } : undefined; });
   reglage('#objectif', v => { const h = parseFloat(String(v).replace(',', '.')); return h >= 4 && h <= 12 ? { objectif: Math.round(h * 60) } : undefined; });
   reglage('#objectifPas', v => { const p = parseInt(v); return p >= 1000 && p <= 40000 ? { objectifPas: p } : undefined; });
-  reglage('#seuilEveil', v => { const s = parseInt(v); return s >= 45 && s <= 100 ? { seuilEveil: s } : undefined; });
+  reglage('#seuilEveil', v => { const s = parseInt(v); return s >= 45 && s <= 100 ? { seuilEveil: s, seuilRegle: true } : undefined; });
 
   addEventListener('hashchange', () => {
     const brut = lireHash(location.hash);

@@ -1,4 +1,4 @@
-// Fiche Sommeil : réveil d'après ton pouls (au-dessus de 65) puis corrigé à la main, sieste proposée puis confirmée, sieste déclarée par-dessus
+// Fiche Sommeil : réveil d'après ton pouls (au-dessus de 60) puis corrigé à la main, sieste proposée puis confirmée, sieste déclarée par-dessus
 // (elle remplace l'autre), puis supprimée. Données : dernière matinée à 8 h 10, pouls remonté 10 min avant, creux à 14 h.
 import { ouvrirChrome, attendre } from './cdp.mjs';
 
@@ -22,7 +22,7 @@ await p.aller('/index.html');
 
 ok('tuile : sieste à confirmer signalée', /sieste à confirmer/.test(await texte('[data-fiche="sommeil"] .tuile-sous')), await texte('[data-fiche="sommeil"] .tuile-sous'));
 await clic('[data-fiche="sommeil"]'); await attendre(300);
-ok("fiche : réveil d'après ton pouls, au-dessus de 65 à 8 h (le bracelet disait 8 h 10)", /^08:00$/.test(await js(`document.querySelector('#reveilNuit').value`)) && /te disait réveillé à 8\sh\s10/.test(await texte('#ficheCorps') || ''), await js(`document.querySelector('#reveilNuit').value`));
+ok("fiche : réveil d'après ton pouls, au-dessus de 60 à 8 h (le bracelet disait 8 h 10)", /^08:00$/.test(await js(`document.querySelector('#reveilNuit').value`)) && /te disait réveillé à 8\sh\s10/.test(await texte('#ficheCorps') || ''), await js(`document.querySelector('#reveilNuit').value`));
 const nuitAvant = await texte('#ficheCorps .tuiles strong');
 ok('fiche : sieste proposée', /Sieste de/.test(await texte('.sieste-proposee') || ''), await texte('.sieste-proposee span'));
 await p.photo('sommeil-fiche');
