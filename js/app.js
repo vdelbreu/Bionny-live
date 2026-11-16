@@ -7,7 +7,7 @@ import { journees, fiabilite } from './stats.js';
 import { seanceDeclaree, planSommeil, heure, matinSuivant, JOURS } from './coach.js';
 import { initLive, majAge, synchroniserBracelet, connecterBracelet, chercherBracelet, enDirect, lancerDemo } from './live.js';
 import { journal, info, mettreALHeure, lireReveils, ecrireReveils, vibrer, verifierMesuresAuto } from './connexion.js';
-import { reveilsVoulus, memesReveils, rappelsImportes, tropDeReveils, joursCourts } from './reveil.js';
+import { reveilsVoulus, memesReveils, rappelsImportes, tropDeReveils, joursCourts, lireHorloge, prochainsReveils, RAFALE } from './reveil.js';
 import { $, nf, toast } from './ui.js';
 import { rendreJour, brancherFiches } from './vues/jour.js';
 import { rendreCoach, brancherCoach } from './vues/coach.js';
@@ -18,6 +18,7 @@ const ANCIENNES = { direct: 'jour', semaine: 'donnees', bilan: 'coach' };
 // objectif en minutes ; leverJours = heure de lever « HH:MM » par jour de la semaine (0 = dimanche), selon tes cours ;
 // reveil = ancienne heure unique, gardée seulement le temps de la reporter sur un jour
 // santeJusqua = date de la dernière mesure de pouls envoyée vers Apple Santé
+// horloge = tes réveils de l'app Horloge, collés depuis le raccourci : { t: [instants], recu }
 // seuilEveil = ton pouls d'éveil : au-dessus tu es éveillé, en dessous tu dors (ta règle, sante.js) ; gardé seulement
 // si tu l'as réglé toi-même (seuilRegle), sinon la valeur par défaut
 // vibreur = réveils écrits dans le bracelet (voir reveil.js) ; notifs = appels et messages, désactivé de base
@@ -74,6 +75,7 @@ function reglagesValides(r) {
         .map(x => ({ minutes: x.minutes, jours: x.jours.filter(j => Number.isInteger(j) && j >= 0 && j <= 6), actif: x.actif !== false, nom: typeof x.nom === 'string' ? x.nom.slice(0, 20) : 'Rappel' })),
     } : null,
     notifs: typeof r.notifs === 'boolean' ? r.notifs : null,
+    horloge: r.horloge && Array.isArray(r.horloge.t) ? { t: r.horloge.t.filter(x => n(x, 0, 1e13) != null).slice(0, 5), recu: n(r.horloge.recu, 0, 1e13) } : null,
   }).filter(([, v]) => v != null));
 }
 
@@ -302,6 +304,20 @@ async function restaurer(fichier) {
 
 // État affiché : à jour, en attente de connexion, ou modèle qui ne répond pas aux réveils
 let etatReveils = '', envoiReveils = null, reveilsNonGeres = false, etatMesures = null;
+// Réveils de l'app Horloge : un site ne peut pas les lire. Le raccourci « ViaWrist Réveils » les copie et ouvre Bluefy ;
+// un appui ici les colle (le presse-papiers ne se lit qu'au toucher), ou tu les colles dans le champ si Bluefy refuse.
+function recevoirHorloge(texte) {
+  const t = lireHorloge(texte, Date.now());
+  if (!t.length) return toast("Aucune heure trouvée dans le texte collé (attendu : 07:30).");
+  R.horloge = { t, recu: Date.now() };
+  modifierVibreur(v => { v.reveil = true; });
+  const h = t.map(x => heure(new Date(x).getHours() * 60 + new Date(x).getMinutes()));
+  toast(`Réveils de l'Horloge reçus : ${h.join(', ')}. Le bracelet vibrera ${RAFALE} fois, une par minute, les ${RAFALE} min avant le premier.`);
+}
+async function collerHorloge() {
+  try { recevoirHorloge(await navigator.clipboard.readText()); }
+  catch { $('#horlogeSecours').hidden = false; $('#horlogeTexte').focus(); toast('Colle tes réveils dans le champ (appui long, Coller).'); }
+}
 function modifierVibreur(f) {
   f(R.vibreur);
   reveilsNonGeres = false;   // tu viens de changer quelque chose : on réessaie
@@ -358,6 +374,11 @@ function rendreReveils() {
   for (const i of document.querySelectorAll('#leverJours input')) i.value = R.leverJours[i.dataset.jour] ?? '';
   $('#reveilNote').textContent = `Selon tes cours. Vide : ton heure habituelle${plan.habituel != null ? ` (${heure(plan.habituel)})` : ''}.`;
   $('#vibReveil').checked = v.reveil;
+  const prochains = prochainsReveils(R, Date.now()), quand = t => `${heure(new Date(t).getHours() * 60 + new Date(t).getMinutes())} ${cleJour(t) === cleJour(Date.now()) ? "aujourd'hui" : 'demain'}`;
+  const horloge = (R.horloge?.t || []).filter(t => t > Date.now());
+  $('#etatHorloge').textContent = horloge.length
+    ? `Reçus de l'Horloge : ${horloge.map(quand).join(', ')}.${v.reveil ? ` Le bracelet vibrera ${RAFALE} fois, ${cleJour(horloge[0]) === cleJour(Date.now()) ? "aujourd'hui" : 'demain'}, de ${heure(new Date(horloge[0] - RAFALE * 60e3).getHours() * 60 + new Date(horloge[0] - RAFALE * 60e3).getMinutes())} à ${heure(new Date(horloge[0] - 60e3).getHours() * 60 + new Date(horloge[0] - 60e3).getMinutes())}.` : ' Active le réveil vibreur pour que le bracelet vibre.'}`
+    : `Aucun réveil de l'Horloge à venir${v.reveil && prochains.length ? ` : ton heure de lever sert de réveil (${quand(prochains[0])})` : ''}.`;
   $('#vibCoucher').checked = v.coucher;
   const parHeure = new Map();
   for (const [j, h] of Object.entries(R.leverJours)) parHeure.set(h, [...(parHeure.get(h) || []), +j]);
@@ -493,6 +514,7 @@ function demarrer() {
     if (action === 'sante') envoyerSante();
     if (action === 'vibrer') testerVibreur();
     if (action === 'essai-reveil') essayerReveil();
+    if (action === 'coller-horloge') collerHorloge();
     if (action === 'rappel-ajouter') modifierVibreur(v => { v.rappels.push({ minutes: 12 * 60, jours: [1, 2, 3, 4, 5], actif: true, nom: 'Rappel' }); });
     if (action === 'rappel-suppr') { const i = +e.target.closest('[data-rappel]').dataset.rappel; modifierVibreur(v => { v.rappels.splice(i, 1); }); }
     const jourRappel = e.target.closest('[data-rappel] [data-jour-rappel]');
@@ -528,6 +550,7 @@ function demarrer() {
     const t = e.target;
     if (t.id === 'vibReveil') modifierVibreur(v => { v.reveil = t.checked; });
     if (t.id === 'vibCoucher') modifierVibreur(v => { v.coucher = t.checked; });
+    if (t.id === 'horlogeTexte' && t.value.trim()) { recevoirHorloge(t.value); t.value = ''; }
     if (t.id === 'vibNotifs') { R.notifs = t.checked; sauverReglages(); rendreReveils(); }
     const ligne = t.closest('[data-rappel]');
     if (!ligne) return;

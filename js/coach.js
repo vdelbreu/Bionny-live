@@ -48,9 +48,11 @@ export function planSommeil(c) {
   const matin = matinSuivant(c.maintenant);
   const levers = nuits.map(n => minutesDuJour(n.fin));
   const habituel = levers.length ? Math.round(mediane(levers) / 5) * 5 : null;
-  const regle = c.R.leverJours?.[matin.jour] ?? c.R.reveil ?? null;
+  // le réveil de l'app Horloge (collé dans Réveil) du matin visé passe avant ton heure de lever réglée
+  const horloge = (c.R.horloge?.t || []).find(t => t > c.maintenant && t - c.maintenant < JOUR && new Date(t).getDay() === matin.jour);
+  const regle = horloge ? `${String(new Date(horloge).getHours()).padStart(2, '0')}:${String(new Date(horloge).getMinutes()).padStart(2, '0')}` : c.R.leverJours?.[matin.jour] ?? c.R.reveil ?? null;
   const lever = regle ? minutesHHMM(regle) : habituel;
-  const base = { besoin, dette, rattrapage, moyenne: moy, siestes, eveil, lever, habituel, matin, nuits: nuits.length, source: regle ? 'reglage' : 'habitude' };
+  const base = { besoin, dette, rattrapage, moyenne: moy, siestes, eveil, lever, habituel, matin, nuits: nuits.length, source: horloge ? 'horloge' : regle ? 'reglage' : 'habitude' };
   if (lever == null) return { ...base, coucher: null, avance: 0, tard: false, possible: null };
   const coucher = Math.round((lever - besoin / MIN - eveil - LATENCE) / 5) * 5;
   // avance sur ton endormissement habituel : au-delà d'1 h, le corps n'a pas encore sommeil, il faut l'y aider

@@ -31,8 +31,9 @@ ok('notifications désactivées de base', !(await js(`document.querySelector('#v
 await js(`(() => { const i = document.querySelector('#vibReveil'); i.checked = true; i.dispatchEvent(new Event('change', { bubbles: true })); })()`);
 await attendre(4000);
 let liste = await reveilsDuBracelet();
-ok('réveil vibreur : une alarme par heure de lever, écrite et vérifiée', liste.length === 4 && liste.filter(x => / Reveil$/.test(x)).length === 3 && /Enregistré dans le bracelet/.test(await texte('#etatReveils')),
-  `${liste.join(' / ')} | ${await texte('#etatReveils')}`);
+const rafale = l => l.filter(x => / Reveil$/.test(x)).slice(0, 5).map(x => +x.split(' ')[1]);
+ok('réveil vibreur : rafale de 5 vibrations, une par minute, écrite et vérifiée', rafale(liste).every((m, k, a) => !k || m === (a[k - 1] + 1) % 1440) && rafale(liste).length === 5
+  && liste.includes(`actif ${18 * 60} Sport`) && /Enregistré dans le bracelet/.test(await texte('#etatReveils')), `${liste.join(' / ')} | ${await texte('#etatReveils')}`);
 ok('résumé des heures de lever', /7\sh\s20 lun, mar, jeu/.test(await texte('#resumeLevers')), await texte('#resumeLevers'));
 
 await clic('[data-action="rappel-ajouter"]'); await attendre(200);
@@ -49,8 +50,15 @@ ok('tester le vibreur', (await ble()).ecrits.includes('50 55') && /vibrer/.test(
 await clic('[data-action="essai-reveil"]'); await attendre(4000);
 liste = await reveilsDuBracelet();
 const dans3 = await js(`(() => { const t = new Date(Date.now() - 4000 + 3 * 60e3); return t.getHours() * 60 + t.getMinutes(); })()`);
-ok('réveil d’essai : écrit dans le bracelet 3 min plus tard, les autres gardés', liste.some(x => x === `actif ${dans3} Essai`) && liste.length === 6 && /doit vibrer/.test(await texte('#toast')),
+ok('réveil d’essai : écrit dans le bracelet 3 min plus tard, les autres gardés', liste.some(x => x === `actif ${dans3} Essai`) && liste.length <= 10 && liste.includes(`actif ${21 * 60} Médicament`) && /doit vibrer/.test(await texte('#toast')),
   `${liste.join(' / ')} | ${await texte('#toast')}`);
+// réveils de l'Horloge : sans accès au presse-papiers, le champ de secours apparaît ; 6 h 50 → rafale de 6 h 45 à 6 h 49
+await clic('[data-action="coller-horloge"]'); await attendre(800);
+await js(`document.querySelector('#horlogeSecours').hidden = false`);
+await p.saisir('#horlogeTexte', 'Réveil 06:50'); await attendre(4000);
+liste = await reveilsDuBracelet();
+ok('Horloge : rafale 5 min avant le réveil collé', [405, 406, 407, 408, 409].every(m => liste.includes(`actif ${m} Reveil`)) && /Reçus de l.Horloge : 6\sh\s50/.test(await texte('#etatHorloge')),
+  `${liste.join(' / ')} | ${await texte('#etatHorloge')}`);
 ok('réveil d’essai noté dans le journal', /essai de réveil à/.test(await js(`(async () => (await import('/js/connexion.js')).journal())()`)));
 await js(`(() => { const i = document.querySelector('#vibNotifs'); i.checked = true; i.dispatchEvent(new Event('change', { bubbles: true })); })()`); await attendre(200);
 ok('notifications : explication et marche à suivre affichées', !(await js(`document.querySelector('#aideNotifs').hidden`)));
@@ -61,5 +69,5 @@ await p.photo('levers');
 
 await clic('.onglets [data-vue="jour"]'); await attendre(300);
 await clic('[data-fiche="coucher"]'); await attendre(300);
-ok('fiche coucher : le bracelet vibrera à l’heure de lever', /Le bracelet vibrera à|Réveil vibreur désactivé/.test(await texte('#ficheCorps')), (await texte('#ficheCorps')).match(/Le bracelet vibrera[^.]*\.|Réveil vibreur désactivé\./)?.[0]);
+ok('fiche coucher : la rafale avant le réveil de l’Horloge', /Le bracelet vibrera 5 fois, de 6\sh\s45 à 6\sh\s49, avant ton réveil de l.Horloge/.test(await texte('#ficheCorps')), (await texte('#ficheCorps')).match(/Le bracelet vibrera[^.]*\.|Réveil vibreur désactivé\./)?.[0]);
 p.fin();

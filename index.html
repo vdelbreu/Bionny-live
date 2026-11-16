@@ -137,8 +137,22 @@
               </div>
               <span class="note" id="reveilNote"></span>
             </div>
-        <label class="interrupteur"><input type="checkbox" id="vibReveil"><span>Réveil vibreur à mes heures de lever</span></label>
+        <label class="interrupteur"><input type="checkbox" id="vibReveil"><span>Réveil vibreur : 5 vibrations, une par minute, les 5 min avant mon réveil</span></label>
         <p class="note" id="resumeLevers"></p>
+        <div class="horloge">
+          <p class="note fort" id="etatHorloge"></p>
+          <div class="actions"><button class="petit primary" data-action="coller-horloge">Coller mes réveils de l'Horloge</button></div>
+          <label class="field" id="horlogeSecours" hidden><span>Tes réveils de l'Horloge</span><input id="horlogeTexte" type="text" inputmode="text" placeholder="07:30"><span class="note">appui long, Coller</span></label>
+          <details><summary>Lier l'app Horloge (une fois)</summary>
+            <p class="explication">Un site ne peut pas lire l'app Horloge, et Bluefy ne reçoit rien d'un raccourci : le raccourci copie tes réveils et ouvre Bluefy, tu les colles d'un appui. Dans l'app Raccourcis, touche « + », nomme-le « ViaWrist Réveils », puis ajoute :</p>
+            <ol class="etapes">
+              <li>l'action de l'app Horloge qui donne tes alarmes (« Obtenir toutes les alarmes » ou « Rechercher des alarmes », selon ta version d'iOS), filtrée sur « Est activée » ;</li>
+              <li>« Copier dans le presse-papiers » avec ces alarmes (seules leurs heures comptent, 07:30 ou 7 h 30) ;</li>
+              <li>« Ouvrir l'app » : Bluefy.</li>
+            </ol>
+            <p class="explication">Pour qu'il se lance seul : onglet Automatisation → « + » → App → Horloge → « Est fermée », exécution immédiate, raccourci « ViaWrist Réveils ». Le soir, tu règles ton réveil dans Horloge et tu la fermes : Bluefy s'ouvre, tu touches « Coller mes réveils de l'Horloge », bracelet connecté.</p>
+          </details>
+        </div>
         <label class="interrupteur"><input type="checkbox" id="vibCoucher"><span>Rappel du coucher, 30 min avant l'heure conseillée</span></label>
         <div class="rappels" id="listeRappels"></div>
         <div class="actions">
@@ -146,7 +160,7 @@
           <button class="petit" data-action="vibrer">Tester le vibreur</button>
           <button class="petit" data-action="essai-reveil">Essayer un réveil dans 3 min</button>
         </div>
-        <p class="note">Enregistrés dans le bracelet : il vibre même téléphone éteint. La durée et la force de la vibration sont fixées par le bracelet. 10 au plus.</p>
+        <p class="note">Enregistrés dans le bracelet : il vibre même téléphone éteint. La durée et la force d'une vibration sont fixées par le bracelet, d'où la rafale. 10 au plus : la rafale du prochain réveil d'abord, puis le coucher, tes rappels, et une vibration 5 min avant ton lever les autres jours.</p>
       </article>
 
       <article class="panel">
@@ -247,7 +261,7 @@
             <summary>D'où viennent les chiffres</summary>
             <dl class="methodes">
               <dt>Sommeil</dt><dd>Ta règle, avec ton pouls relevé toutes les 5 min : au-dessus de ton pouls d'éveil (60 bpm, réglable dans Objectifs), tu es éveillé ; en dessous, tu dors. Un seul relevé au-dessus pendant la nuit est un rêve ; 10 min au-dessus ou plusieurs pics rapprochés, tu t'es réveillé. Ta nuit part de ton plus long sommeil entre minuit et 7 h ; avant lui, ce qui en est séparé par plus de 30 min d'éveil est du calme du soir. Après lui, tu te rendors en moins de 30 min (ou en moins d'1 h pour 1 h au moins) : c'est un réveil dans la nuit, compté éveillé ; sinon, ou si tu as marché (250 pas dans l'heure), tu es levé. Les phases (profond, paradoxal) viennent du bracelet, entre ces heures. Sans assez de pouls, ce sont les heures du bracelet, écartées si ton pouls les contredit. Le bracelet renvoie parfois une ancienne nuit sous une autre date (mêmes phases, même heure) : elle est écartée. Une nuit où il n'a presque rien mesuré (retiré, déchargé ou éteint) n'est ni comptée ni devinée, elle est signalée. Chaque nuit dit d'où viennent ses heures.</dd>
-              <dt>Heure de coucher</dt><dd>Ton heure de lever − ton besoin − 15 min pour t'endormir. Besoin = objectif + un quart de la dette des 7 dernières nuits (1 h au plus). Si c'est loin de ton habitude, on avance de 30 min à la fois.</dd>
+              <dt>Heure de coucher</dt><dd>Ton heure de lever (ton réveil de l'Horloge s'il est collé dans Réveil) − ton besoin − 15 min pour t'endormir. Besoin = objectif + un quart de la dette des 7 dernières nuits (1 h au plus). Si c'est loin de ton habitude, on avance de 30 min à la fois.</dd>
               <dt>FC de repos</dt><dd>Moyenne des 10 % de relevés les plus bas pendant ton sommeil.</dd>
               <dt>Récupération</dt><dd>Ta dernière nuit face à ton objectif, et ta FC de repos face à tes 14 nuits précédentes. Indicatif, pas un avis médical.</dd>
               <dt>Effort</dt><dd>Minutes où ton cœur dépasse 64 % de ta FC max (modéré), 77 % comptant double (intense). L'OMS conseille 150 min par semaine.</dd>

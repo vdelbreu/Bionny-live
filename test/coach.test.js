@@ -139,3 +139,13 @@ test('planSommeil : les siestes de la semaine réduisent la dette', () => {
   assert.equal(p.siestes, 90 * MIN);
   assert.match(repondre('coucher', c).lignes[1], /\(\+ 1 h 30 de siestes\)/);
 });
+
+test("planSommeil : le réveil de l'Horloge du matin visé passe avant l'heure de lever réglée", () => {
+  const c = contexte({ heures: 8 });                // mercredi 14 à midi : la nuit visée finit jeudi 15
+  c.R = { ...c.R, leverJours: { 4: '09:30' }, horloge: { t: [jour(15, 7, 10)] } };
+  const p = planSommeil(c);
+  assert.equal(p.source, 'horloge');
+  assert.equal(p.lever, 7 * 60 + 10);
+  c.R.horloge = { t: [jour(16, 7, 10)] };          // vendredi : pas le matin visé
+  assert.deepEqual([planSommeil(c).source, planSommeil(c).lever], ['reglage', 9 * 60 + 30]);
+});

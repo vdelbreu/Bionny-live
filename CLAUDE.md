@@ -47,7 +47,8 @@ Commandes en lecture, plus la mesure en direct :
 - `0x50 [0x55, 0xaa]` « trouver l'appareil » : le bracelet vibre (bouton Tester le vibreur).
 - Grande trame `bc type longueur(LE) crc16-Modbus(LE) charge` (`paquetGros`, la demande de sommeil suit le même schéma) ; réveils type `0x2c` : lecture `[01]` → `[01, n, (taille, drapeaux, minutes LE, nom UTF-8 ≤ 28 o)…]`, drapeaux bit 7 = actif, bits 0-6 = jours (0 = dimanche) ; écriture `[02, n, …]` remplace toute la liste, accusé `[02]`. Trame longue : d'un bloc si écriture avec réponse, sinon morceaux de 20 octets.
 - Réveils qui ne vibrent pas (dit par l'utilisateur le 14/11 ; seul « trouver l'appareil » `0x50` vibre). Format vérifié identique à Gadgetbridge (`YawellRingPacketHandler.encodeAlarmsPayload`, `H59Coordinator` : 10 réveils, nom ≤ 28 o, bit 0 = dimanche, bit 7 = actif, trame `bc 2c` sur `de5bf72a`). Gadgetbridge envoie aussi à la connexion les préférences `0x0a` (format 24 h, unités, profil) : pas fait ici. Le réveil vibreur est désactivé de base (il l'était dans la sauvegarde du 03/11). Bouton « Essayer un réveil dans 3 min » (Réveil, `essayerReveil`, alarme « Essai » retirée 10 min après) ; le journal note l'essai et le détail des réveils relus.
-- `js/reveil.js` décide la liste : réveil vibreur à chaque heure de `leverJours` (une alarme par heure, ses jours), rappel du coucher 30 min avant l'heure conseillée (jour du soir visé), rappels de l'utilisateur ; 10 au plus. Première lecture : les réveils déjà présents (app Bionny) deviennent des rappels. Écrit seulement si la liste diffère, puis relu pour vérifier. Pas de réglage de durée ni de force de vibration dans ce protocole, et pas de notifications d'appel ou de message : sur iPhone c'est iOS qui les envoie (ANCS) une fois le bracelet associé, ce qui le bloque pour ViaWrist ; désactivé de base, la carte explique.
+- Réveil « dynamique » (16/11, l'essai vibrait mais une vibration ne réveille pas) : rafale de `RAFALE` = 5 vibrations, une par minute, de 5 min à 1 min avant le prochain réveil (force et durée non réglables). Prochain réveil (`prochainsReveils`) = réveils de l'app Horloge encore à venir (`R.horloge = { t: [instants], recu }`), sinon `leverJours` du prochain matin. Horloge : un site ne peut pas la lire et Bluefy n'a pas de schéma d'URL (rien de documenté) ; le raccourci « ViaWrist Réveils » (alarmes activées → presse-papiers → ouvrir Bluefy, automatisation « Horloge est fermée ») puis un appui sur « Coller mes réveils de l'Horloge » (`collerHorloge`, `navigator.clipboard.readText`, champ de secours `#horlogeTexte`) ; `lireHorloge` prend toutes les heures du texte à leur prochaine occurrence dans les 24 h, active le réveil vibreur. `planSommeil` prend le réveil de l'Horloge du matin visé comme lever (`source: 'horloge'`).
+- `js/reveil.js` décide la liste : rafale du prochain réveil, rappel du coucher 30 min avant l'heure conseillée (jour du soir visé), rappels de l'utilisateur, rafales des autres réveils de l'Horloge, puis une vibration 5 min avant le lever les autres jours de `leverJours` ; 10 au plus. Première lecture : les réveils déjà présents (app Bionny) deviennent des rappels. Écrit seulement si la liste diffère, puis relu pour vérifier. Pas de réglage de durée ni de force de vibration dans ce protocole, et pas de notifications d'appel ou de message : sur iPhone c'est iOS qui les envoie (ANCS) une fois le bracelet associé, ce qui le bloque pour ViaWrist ; désactivé de base, la carte explique.
 
 `synchroniser(jours)` produit le même objet que `parseImport` (+ `activite`, `stress`) : tout passe par `fusionner`, puis `nuits` et `journees`. Synchro du bracelet (`parJour`) : le sommeil est remplacé nuit par nuit (chaque période renvoyée, à 2 h près), une nuit que le bracelet ne renvoie plus reste.
 
@@ -76,7 +77,7 @@ Stockage : `localStorage` `bionny-reglages` et `bionny-sante` (noms gardés pour
 
 ## Tester
 
-- `npm test` : 87 tests (sante, coeur, bracelet, stats, coach, et `connexion.test.js` avec un faux bracelet)
+- `npm test` : 90 tests (sante, coeur, bracelet, stats, coach, et `connexion.test.js` avec un faux bracelet)
 - `npm run test:navigateur` (site servi sur le port 8765) : scénarios dans un Chrome sans fenêtre, profil jetable (`test/navigateur/` : parcours, connexion avec faux Web Bluetooth, ouverture, Santé, sommeil, réveils, mesures automatiques ; `captures` fait seulement des images). `CAPTURES=dossier` pour des images.
 - `python -m http.server 8765`, puis `outils/apercu.html#donnees/coeur` (données d'exemple, refuse d'écraser de vraies données) ou `outils/mobile.html#bilan` (cadre 390 px pour les captures headless)
 - Debug BLE : `chrome://bluetooth-internals` sur PC (couper le Bluetooth de l'iPhone pour libérer le bracelet)
@@ -94,7 +95,8 @@ Aucune donnée personnelle (valeurs mesurées, prénom, identifiants) dans ce d�
 ## À vérifier
 
 - [ ] Règle des 65 bpm : comparer les heures affichées avec le ressenti sur quelques nuits portées ; ajuster le seuil dans Réglages si besoin.
-- [ ] Réveil d'essai : le bracelet vibre-t-il ? Sinon, journal (réveils relus, accusé `bc 2c … 02`) ; piste suivante : envoyer les préférences `0x0a` comme Gadgetbridge.
+- [x] Réveil d'essai : le bracelet vibre (16/11), mais trop peu pour réveiller : d'où la rafale.
+- [ ] Raccourci « ViaWrist Réveils » : nom exact de l'action Horloge, texte copié (heures lisibles ?), lecture du presse-papiers dans Bluefy (sinon champ de secours).
 - [ ] Copies de nuits : vérifier dans le journal les « J-n » reçus après une nuit sans bracelet.
 
 - [ ] Pouls en direct `0x69` : prolongation toutes les 15 s, relance seulement après 45 s sans aucun paquet ; vérifier avec le journal Bluetooth (Réglages → Avancé).

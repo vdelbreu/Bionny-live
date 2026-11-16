@@ -8,6 +8,7 @@ import {
   conseilJour, planSommeil, effortSemaine, semaine, OBJECTIF_EFFORT, phraseCoeur, phraseSommeil, phrasePas, phraseBesoin,
   phraseAvance, etatCoeur, etatSommeil, heure, seuilsEffort,
 } from '../coach.js';
+import { RAFALE } from '../reveil.js';
 import { $, nf, dateLongue, pastille, barreProgression, aDesDonnees, insecable, origineNuit } from '../ui.js';
 
 const hhmm = m => { const t = ((Math.round(m) % 1440) + 1440) % 1440; return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; };
@@ -160,7 +161,7 @@ const FICHES = {
     const p = planSommeil(c), m = p.matin, jour = m.nom[0].toUpperCase() + m.nom.slice(1);
     const champ = `<label class="lever">${m.demain ? jour : 'Ce matin'}, je me lève à <input type="time" id="reveilCarte" data-jour="${m.jour}" value="${p.lever != null ? hhmm(p.lever) : ''}"></label>
       <p class="note">Retenu pour tous les ${m.nom}s.</p>
-      <p class="note">${c.R.vibreur?.reveil && c.R.leverJours?.[m.jour] ? `Le bracelet vibrera à ${heure(p.lever)}.` : 'Réveil vibreur désactivé.'} <button class="lien" data-aller="reveil">Onglet Réveil</button></p>`;
+      <p class="note">${c.R.vibreur?.reveil && p.source !== 'habitude' ? `Le bracelet vibrera ${RAFALE} fois, de ${heure(p.lever - RAFALE)} à ${heure(p.lever - 1)}${p.source === 'horloge' ? ", avant ton réveil de l'Horloge" : ''}.` : 'Réveil vibreur désactivé.'} <button class="lien" data-aller="reveil">Onglet Réveil</button></p>`;
     if (p.coucher == null) return { titre: 'Au lit ce soir', corps: `<p class="fiche-cle">Dis-moi à quelle heure tu te lèves.</p>${champ}` };
     return { titre: p.tard ? 'Il est l\'heure' : `Au lit vers ${heure(p.coucher)}`, corps: `
       <p class="fiche-cle">${p.tard ? `Tu peux encore dormir <b>environ ${duree(Math.floor(p.possible / 3e5) * 3e5)}</b> avant ton lever à ${heure(p.lever)}, les 15 min pour t'endormir déjà comptées.` : md(phraseBesoin(p, c.R.objectif * 60e3))}</p>
